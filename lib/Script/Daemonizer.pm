@@ -14,6 +14,11 @@ use Fcntl qw/:DEFAULT :flock/;
 $Script::Daemonizer::VERSION = '0.01_01';
 
 # ------------------------------------------------------------------------------
+# 'Private' vars
+# ------------------------------------------------------------------------------
+my $pidfh;
+
+# ------------------------------------------------------------------------------
 # 'Private' functions
 # ------------------------------------------------------------------------------
 
@@ -53,11 +58,11 @@ sub _write_pidfile {
 
     my $fh;
     sysopen($fh, $pidfile, O_WRONLY | O_CREAT)
-        || croak "can't open $pidfile: $!";
+        or croak "can't open $pidfile: $!";
     flock($fh, LOCK_EX|LOCK_NB)
-        || croak "can't lock $pidfile: $! - is another instance running?";
+        or croak "can't lock $pidfile: $! - is another instance running?";
     truncate($fh, 0)
-        || croak "can't truncate $pidfile: $!";
+        or croak "can't truncate $pidfile: $!";
 
     my $prev = select $fh;
     ++$|;
@@ -66,9 +71,9 @@ sub _write_pidfile {
 
     # Now we won't let this go out of scope, so that pid filehandle will always
     # be kept open and locked
-    $Script::Daemonizer::pidfh = $fh;
+    $pidfh = $fh;
 
-    return fileno $Script::Daemonizer::pidfh;
+    return $pidfh;
 }
 
 #################
@@ -77,8 +82,8 @@ sub _write_pidfile {
 sub _close_fh {
     shift;  # discard 'keep' label
     my $keep = shift;
-
     my %keep;
+
     # Get the FD for each FH passed (if any).
     if ($keep) {
         # See if we have an array ref
@@ -99,9 +104,15 @@ sub _close_fh {
             or croak "Cannot open /dev/null for reading: $!";
     }
 
-    # STDOUT and STDERR are managed separately, because 
+    # -------------------------------------------------------------------------
+    # STDOUT and STDERR are managed separately, because we must see if user
+    # requested to tie them to syslog. Also, closing STDOUT and STDERR as late
+    # as possible, any error message or warning has still a chance to be spit
+    # out somewhere.
+    # See _manage_stdhandles()
+    # -------------------------------------------------------------------------
 
-    # Other taken from - or inspired by - Proc::Daemon
+    # Other code taken from - or inspired by - Proc::Daemon
     # Here is the original comment: 
         # Since <POSIX::close(FD)> is in some cases "secretly" closing
         # file descriptors without telling it to perl, we need to
@@ -124,16 +135,13 @@ sub _close_fh {
         # potential damage later
     { 
         my @fh;
-        my $cur = 0;
-        while ($cur <= $highest_fd) {
+        my $cur = -1;
+        while ($cur < $highest_fd) {
             open $fh[ $_ ], '<', '/dev/null' or
                 croak "Cannot open /dev/null for reading: $!";
             $cur = fileno( $fh[ $_ ] );
         }
     }
-
-    # Delay closing STDOUT and STDERR until we see if they must be tied to 
-    # syslog. See _manage_stdhandles()
 
     return %keep;
 }
@@ -157,6 +165,9 @@ sub _manage_stdhandles {
     my %params = @_;
 
     my $keep = $params{'keep'};
+    # I do not go through the same analysis done in _close_fh() because I can
+    # name the filehandles I'm acting upon: they're called STDOUT (1) and
+    # STDERR (2)
     my %keep = map { $_ => 1 } @$keep;
 
     # If we were not requested to tie stdhandles, we may safely close them and
@@ -173,7 +184,7 @@ sub _manage_stdhandles {
         carp "Unable to load Tie::Syslog module: $@. I will continue without output.";
         _close 'STDOUT' unless ($keep{1} or $keep{'STDOUT'});
         _close 'STDERR' unless ($keep{2} or $keep{'STDERR'});
-        return;
+        return 0;
     }
 
     $Tie::Syslog::ident  = $params{'name'};
@@ -182,7 +193,7 @@ sub _manage_stdhandles {
     unless ($keep{1} or $keep{'STDOUT'}) {
         close STDOUT
             or croak "Unable to close STDOUT: $!";
-        tie *STDOUT, 'Tie::Handle', {
+        tie *STDOUT, 'Tie::Syslog', {
             facility => 'LOG_LOCAL0',
             priority => 'LOG_INFO',
         };
@@ -191,7 +202,7 @@ sub _manage_stdhandles {
     unless ($keep{2} or $keep{'STDERR'}) {
         close STDERR
             or croak "Unable to close STDERR: $!";
-        tie *STDERR, 'Tie::Handle', {
+        tie *STDERR, 'Tie::Syslog', {
             facility => 'LOG_LOCAL0',
             priority => 'LOG_ERR',
         };
@@ -237,7 +248,7 @@ sub daemonize {
     #  1st) we may keep it open in step 6, knowing its file descriptor
     #  2nd) in case of errors, we still get a chance to throw a readable message
     #       (hopefully)
-    push @{ $params{'keep'} }, _write_pidfile($params{'pidfile'})
+    push @{ $params{'keep'} }, fileno(_write_pidfile($params{'pidfile'}))
         if $params{'pidfile'};
 
     # Step 6.
@@ -245,12 +256,12 @@ sub daemonize {
         unless $params{'do_not_close_fh'};
 
     # Step 7.
-    _manage_stdhandles(%params) unless $params{'do_not_close_fh'};;
+    _manage_stdhandles(%params) unless $params{'do_not_close_fh'};
     
 }
 
 
-1; # End of Script::Daemonizer
+'End of Script::Daemonizer'
 
 __END__
 
