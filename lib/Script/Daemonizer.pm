@@ -213,6 +213,57 @@ sub _manage_stdhandles {
 # 'Public' functions
 # ------------------------------------------------------------------------------
 
+sub drop_privileges_to {
+    # Check parameters:
+    croak "Odd number of arguments in drop_privileges_to() call!"
+        if @_ % 2;
+    my %ids = @_;
+    my ($euid, $egid, $uid, $gid) = @ids{qw(euid egid uid gid)};
+
+    # Drop EGID
+    if (defined $egid) {
+        $) = $egid; 
+        croak "Cannot drop effective group id to $egid: $!"
+            if $!;
+    }
+
+    # Drop (real) GID
+    if (defined $gid) {
+        $( = $gid;
+        croak "Cannot drop real group id to $gid: $!"
+            if $!;
+        unless (defined $egid) {
+            # Drop EGID too, unless explicitly forced to something else
+            $) = $gid;
+            croak "Cannot drop effective group id to $gid: $!"
+                if $!;
+        }
+    }
+
+    # Drop EUID
+    if (defined $euid) {
+        $> = $euid;
+        croak "Cannot drop effective user id to $euid: $!"
+            if $!;
+    }
+
+    # Drop (real) UID
+    if (defined $uid) {
+        $< = $uid;
+        croak "Cannot drop real user id to $uid: $!"
+            if $!;
+        unless (defined $euid) {
+            # Drop EUID too, unless explicitly forced to something else
+            $> = $uid;
+            croak "Cannot drop effective user id to $uid: $!"
+                if $!;
+        } 
+    }
+
+    return 1;
+
+}
+
 sub daemonize {
     croak "Odd number of arguments in configuration!"
         if @_ %2;
