@@ -1,0 +1,12 @@
+\.git\/
+\.old
+MANIFEST\.SKIP
+ignore\.txt
+boilerplate\.t
+manifest\.t
+pod-coverage\.t
+pod\.t
+\.gitignore
+README\.md
+test\.pl
+testdaemon.*

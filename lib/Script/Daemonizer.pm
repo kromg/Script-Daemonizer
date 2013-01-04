@@ -9,7 +9,7 @@ use Fcntl qw/:DEFAULT :flock/;
 
 @Script::Daemonizer::ISA = qw(Exporter);
 @Script::Daemonizer::EXPORT = ();
-@Script::Daemonizer::EXPORT_OK = qw(daemonize drop_privileges_to);
+@Script::Daemonizer::EXPORT_OK = qw(daemonize drop_privileges);
 
 $Script::Daemonizer::VERSION = '0.01_01';
 
@@ -213,15 +213,16 @@ sub _manage_stdhandles {
 # 'Public' functions
 # ------------------------------------------------------------------------------
 
-sub drop_privileges_to {
+sub drop_privileges {
     # Check parameters:
-    croak "Odd number of arguments in drop_privileges_to() call!"
+    croak "Odd number of arguments in drop_privileges() call!"
         if @_ % 2;
     my %ids = @_;
     my ($euid, $egid, $uid, $gid) = @ids{qw(euid egid uid gid)};
 
     # Drop EGID
     if (defined $egid) {
+        # $egid might be a list
         $) = $egid; 
         croak "Cannot drop effective group id to $egid: $!"
             if $!;
@@ -229,7 +230,9 @@ sub drop_privileges_to {
 
     # Drop (real) GID
     if (defined $gid) {
-        $( = $gid;
+        # $( cannot be assigned a list. Just in case, we always extract the 
+        # first element
+        $( = (split " ", $gid)[0];
         croak "Cannot drop real group id to $gid: $!"
             if $!;
         unless (defined $egid) {
