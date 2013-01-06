@@ -152,6 +152,8 @@ sub _close_fh {
 # Handle closing of STDOUT/STDERR
 sub _close($) {
     my $fh = shift;
+    # Have to lookup handles by name
+    no strict "refs";
     close *$fh 
         or croak "Unable to close $fh: $!";
     open *$fh, '>', '/dev/null' 
@@ -179,7 +181,9 @@ sub _manage_stdhandles {
     }
 
     # Try to load Tie::Syslog and issue a warning if module cannot be loaded
-    eval 'require Tie::Syslog;';
+    eval {
+        require Tie::Syslog;
+    };
     if ($@) {
         carp "Unable to load Tie::Syslog module: $@. I will continue without output.";
         _close 'STDOUT' unless ($keep{1} or $keep{'STDOUT'});
@@ -314,6 +318,26 @@ sub daemonize {
     
 }
 
+# ------------------------------------------------------------------------------
+# Cleanup after things are done
+# ------------------------------------------------------------------------------
+END {
+    # Close (and possibly remove) pidfile
+    if ($pidfh) {
+        if (my $pidfile = readlink("/proc/$$/fd/".fileno($pidfh))) {
+            close $pidfh
+                or croak "Unable to close pidfile filehandle: $!";
+            unlink $pidfile;
+        }
+
+    }
+
+    # Untie standard handles (if tied)
+    untie *STDOUT
+        if tied *STDOUT;
+    untie *STDERR
+        if tied *STDERR;
+}
 
 'End of Script::Daemonizer'
 

@@ -61,7 +61,7 @@ daemonize (
 
 sleep 4;
 
-unlink \$pidfile;
+# unlink \$pidfile;
 
 SCRIPT3
 
@@ -77,11 +77,17 @@ SCRIPT3
 
     open (NEWDAEMON, "$cmd 2>&1 |")
         or fail("launch second daemon', reason: '$!");
-    my $output = <NEWDAEMON>;
+    my @output = <NEWDAEMON>;
     close NEWDAEMON;
 
-    like($output, qr/another instance running/, "launch daemon and lock pidfile");
-
+    open DBG, '>/tmp/dbg';
+    for (@output) {
+        print DBG "$_\n";
+        pass("launch daemon and lock pidfile")
+            if /another instance running/;
+    }
+    fail("launch daemon and lock pidfile");
+    close DBG;
 }
 
 
