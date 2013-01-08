@@ -43,6 +43,8 @@ SCRIPT1
 
 use Script::Daemonizer qw/ daemonize /;
 
+# $Script::Daemonizer::DEBUG = 'testdaemon_dbg_'.int(rand(1000));
+
 delete @ENV{qw(PATH IFS CDPATH ENV BASH_ENV)};   # Make %ENV safer
 
 SCRIPT2
@@ -59,7 +61,11 @@ daemonize (
     working_dir     => "$testdir",
 );
 
+print "Everything went good.\n";
+
 sleep 4;
+
+print "Test daemon complete.\n";
 
 # unlink \$pidfile;
 
@@ -70,24 +76,26 @@ SCRIPT3
     my $fileno = fileno($tfh);
     defined $fileno or fail("Unable to get fd of generated script");
 
+
+    my @output;
     my $cmd = "$thisperl -T /proc/$$/fd/$fileno";
     open(DAEMON, "$cmd 2>&1 |")
         or fail("launch daemon', reason: '$!");
+    @output = <DAEMON>;
     close DAEMON;
 
     open (NEWDAEMON, "$cmd 2>&1 |")
         or fail("launch second daemon', reason: '$!");
-    my @output = <NEWDAEMON>;
+    @output = <NEWDAEMON>;
     close NEWDAEMON;
 
-    open DBG, '>/tmp/dbg';
-    for (@output) {
-        print DBG "$_\n";
-        pass("launch daemon and lock pidfile")
-            if /another instance running/;
+    PIDLOCK: {
+        for (@output) {
+            pass("launch daemon and lock pidfile"), last PIDLOCK
+                if /another instance running/;
+        }
+        fail("launch daemon and lock pidfile");
     }
-    fail("launch daemon and lock pidfile");
-    close DBG;
 }
 
 

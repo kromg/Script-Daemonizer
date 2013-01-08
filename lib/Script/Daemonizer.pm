@@ -11,7 +11,7 @@ use Fcntl qw/:DEFAULT :flock/;
 @Script::Daemonizer::EXPORT = ();
 @Script::Daemonizer::EXPORT_OK = qw(daemonize drop_privileges);
 
-$Script::Daemonizer::VERSION = '0.01_01';
+$Script::Daemonizer::VERSION = '0.01_02';
 
 # ------------------------------------------------------------------------------
 # 'Private' vars
@@ -69,11 +69,7 @@ sub _write_pidfile {
     print $fh $$;
     select $prev;
 
-    # Now we won't let this go out of scope, so that pid filehandle will always
-    # be kept open and locked
-    $pidfh = $fh;
-
-    return $pidfh;
+    return $fh;
 }
 
 #################
@@ -92,8 +88,15 @@ sub _close_fh {
 
         # Get all file descriptors (assume numbers to be file descriptor)
         foreach (@$keep) {
-            my $fd = /^\d+$/ ? $_ : fileno($_);
-            $keep{ $fd } = 1 if defined $fd;  
+            $keep{ $_ } = 1, next 
+                if /^\d+$/;
+            no strict "refs";   # Have to lookup handles symblically
+            # If filehandle name is unqualified I qualify it as *main::FH
+            my $fd = fileno( 
+                ref($_) eq 'GLOB' ? $_ :
+                             /::/ ? $_ : "main::$_" 
+            );
+            $keep{ $fd } = 1 if defined $fd;
         } 
     } 
 
@@ -137,9 +140,11 @@ sub _close_fh {
         my @fh;
         my $cur = -1;
         while ($cur < $highest_fd) {
-            open $fh[ $_ ], '<', '/dev/null' or
+            open my $fh, '<', '/dev/null' or
                 croak "Cannot open /dev/null for reading: $!";
-            $cur = fileno( $fh[ $_ ] );
+            push @fh, $fh;
+            $cur = fileno( $fh );
+            print "Reopened $cur fd\n";
         }
     }
 
@@ -156,8 +161,11 @@ sub _close($) {
     no strict "refs";
     close *$fh 
         or croak "Unable to close $fh: $!";
-    open *$fh, '>', '/dev/null' 
-        or croak "Unable to reopen $fh on /dev/null: $!";
+    my $destination = $Script::Daemonizer::DEBUG || '/dev/null';
+    open *$fh, '>', $destination
+        or croak "Unable to reopen $fh on $destination: $!";
+        # I'd really like to see whenever this "croak" will actually print 
+        # somewhere, anyway...
 }
 
 ##########################
@@ -185,7 +193,7 @@ sub _manage_stdhandles {
         require Tie::Syslog;
     };
     if ($@) {
-        carp "Unable to load Tie::Syslog module: $@. I will continue without output.";
+        carp "Unable to load Tie::Syslog module. Error is:\n----\n$@----\nI will continue without output";
         _close 'STDOUT' unless ($keep{1} or $keep{'STDOUT'});
         _close 'STDERR' unless ($keep{2} or $keep{'STDERR'});
         return 0;
@@ -224,47 +232,25 @@ sub drop_privileges {
     my %ids = @_;
     my ($euid, $egid, $uid, $gid) = @ids{qw(euid egid uid gid)};
 
-    # Drop EGID
-    if (defined $egid) {
+    # Drop GROUP ID
+    if (defined $gid) {
+        POSIX::setgid((split " ", $gid)[0])
+            or croak "POSIX::setgid() failed: $!";
+    } elsif (defined $egid) {
         # $egid might be a list
         $) = $egid; 
         croak "Cannot drop effective group id to $egid: $!"
             if $!;
     }
 
-    # Drop (real) GID
-    if (defined $gid) {
-        # $( cannot be assigned a list. Just in case, we always extract the 
-        # first element
-        $( = (split " ", $gid)[0];
-        croak "Cannot drop real group id to $gid: $!"
-            if $!;
-        unless (defined $egid) {
-            # Drop EGID too, unless explicitly forced to something else
-            $) = $gid;
-            croak "Cannot drop effective group id to $gid: $!"
-                if $!;
-        }
-    }
-
-    # Drop EUID
-    if (defined $euid) {
-        $> = $euid;
-        croak "Cannot drop effective user id to $euid: $!"
-            if $!;
-    }
-
-    # Drop (real) UID
     if (defined $uid) {
-        $< = $uid;
-        croak "Cannot drop real user id to $uid: $!"
+        POSIX::setuid($uid)
+            or croak "POSIX::setuid() failed: $!";
+    } elsif (defined $euid) {
+        # Drop EUID too, unless explicitly forced to something else
+        $> = $euid;
+        croak "Cannot drop effective user id to $uid: $!"
             if $!;
-        unless (defined $euid) {
-            # Drop EUID too, unless explicitly forced to something else
-            $> = $uid;
-            croak "Cannot drop effective user id to $uid: $!"
-                if $!;
-        } 
     }
 
     return 1;
@@ -282,6 +268,11 @@ sub daemonize {
     $params{'name'}        ||= (split '/', $0)[-1];
     $params{'umask'}       ||= 0;
     $params{'working_dir'} ||= '/';
+
+    # Step 0 - acquire lock on pidfile if required, or die() just before 
+    # anything else happens
+    push @{ $params{'keep'} }, fileno($pidfh = _write_pidfile($params{'pidfile'}))
+        if ($params{'pidfile'});
 
     # Step 1.
     umask($params{'umask'}) or 
@@ -301,42 +292,15 @@ sub daemonize {
     chdir($params{'working_dir'}) or 
         croak "Cannot change directory to ", $params{'working_dir'}, ": $!";
 
-    # Step 5.5 - create pidfile if requested. Do this before closing handles
-    # so that
-    #  1st) we may keep it open in step 6, knowing its file descriptor
-    #  2nd) in case of errors, we still get a chance to throw a readable message
-    #       (hopefully)
-    push @{ $params{'keep'} }, fileno(_write_pidfile($params{'pidfile'}))
-        if $params{'pidfile'};
-
     # Step 6.
     _close_fh(keep => $params{'keep'}) 
         unless $params{'do_not_close_fh'};
 
     # Step 7.
     _manage_stdhandles(%params) unless $params{'do_not_close_fh'};
+
+    return 1;
     
-}
-
-# ------------------------------------------------------------------------------
-# Cleanup after things are done
-# ------------------------------------------------------------------------------
-END {
-    # Close (and possibly remove) pidfile
-    if ($pidfh) {
-        if (my $pidfile = readlink("/proc/$$/fd/".fileno($pidfh))) {
-            close $pidfh
-                or croak "Unable to close pidfile filehandle: $!";
-            unlink $pidfile;
-        }
-
-    }
-
-    # Untie standard handles (if tied)
-    untie *STDOUT
-        if tied *STDOUT;
-    untie *STDERR
-        if tied *STDERR;
 }
 
 'End of Script::Daemonizer'
