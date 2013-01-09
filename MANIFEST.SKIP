@@ -9,4 +9,9 @@ pod\.t
 \.gitignore
 README\.md
 test\.pl
-testdaemon.*
+testdaemon\..*
+t\/manifest\.t
+t\/pod-coverage\.t
+t\/pod\.t
+t\/boilerplate\.t
+ignore\.txt

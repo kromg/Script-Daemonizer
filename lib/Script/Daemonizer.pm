@@ -53,6 +53,8 @@ sub _max_open_files() {
 #########################
 # sub _write_pidfile($) #
 #########################
+# Open the pidfile (creating it if necessary), then lock it, then truncate it,
+# then write pid into it. Then retun filehandle. 
 sub _write_pidfile {
     my ($pidfile) = @_;
 
@@ -66,7 +68,6 @@ sub _write_pidfile {
 
     my $prev = select $fh;
     ++$|;
-    print $fh $$;
     select $prev;
 
     return $fh;
@@ -269,10 +270,13 @@ sub daemonize {
     $params{'umask'}       ||= 0;
     $params{'working_dir'} ||= '/';
 
-    # Step 0 - acquire lock on pidfile if required, or die() just before 
-    # anything else happens
+    # Step 0.0 - OPTIONAL: drop privileges
+    drop_privileges(%{ $params{'drop_privileges'} })
+        if $params{'drop_privileges'};
+
+    # Step 0.1 - OPTIONAL: take a lock on pidfile
     push @{ $params{'keep'} }, fileno($pidfh = _write_pidfile($params{'pidfile'}))
-        if ($params{'pidfile'});
+        if $params{'pidfile'};
 
     # Step 1.
     umask($params{'umask'}) or 
@@ -287,6 +291,11 @@ sub daemonize {
 
     # Step 4.
     _fork();
+    
+    # Step 4.5 - OPTIONAL: if pidfile is in use, now it's the moment to dump our
+    # pid into it.
+    print $pidfh $$
+        if $params{'pidfile'};
 
     # Step 5.
     chdir($params{'working_dir'}) or 
