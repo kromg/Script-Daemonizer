@@ -6,7 +6,9 @@ Script::Daemonizer - Turns your script into a UNIX daemon process (the easy way)
 
 =head1 VERSION
 
-Version 0.01_01
+Version 0.02_00
+
+Pre-release. Code lacks comments and a bit of testing. Doc may not be complete. 
 
 =head1 SYNOPSIS
 
@@ -17,6 +19,7 @@ Version 0.01_01
         uid => $to_uid, 
         gid => $to_gid
     );
+    Script::Daemonizer::restart();
     ...
 
 =head1 ABSTRACT
@@ -106,6 +109,18 @@ daemonize() will automatically call drop_privileges() if configured to do so
 before >> anything else (think of this as step 0). If you need to drop
 privileges at a later moment, use drop_privileges(), otherwise it's probably
 safer to do so while daemonize()-ing. 
+
+=head2 restart()
+
+restart() is there to let you restart completely the daemon. A simple way to
+handle SIGHUP might be restarting, for example (see L<<
+perlipc|http://perldoc.perl.org/perlipc.html#Handling-the-SIGHUP-Signal-in-Daemons >>
+for details). 
+
+    # Restart upon sighup - use a closure to call restart()
+    $SIG{HUP} = sub {
+        Script::Daemonizer::restart;
+    }; 
 
 
 =head1 ADVANCED USAGE

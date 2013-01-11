@@ -4,14 +4,35 @@ use 5.006;
 use strict;
 use warnings;
 use Carp qw/carp croak/;
-use POSIX ();
+use POSIX qw(:signal_h);
 use Fcntl qw/:DEFAULT :flock/;
+use FindBin ();
+use File::Spec::Functions;
+use File::Basename ();
 
 @Script::Daemonizer::ISA = qw(Exporter);
 @Script::Daemonizer::EXPORT = ();
-@Script::Daemonizer::EXPORT_OK = qw(daemonize drop_privileges);
+@Script::Daemonizer::EXPORT_OK = qw(
+    daemonize 
+    drop_privileges
+    restart
+);
 
-$Script::Daemonizer::VERSION = '0.01_02';
+$Script::Daemonizer::VERSION = '0.02_00';
+
+################################################################################
+# HANDLING SIGHUP
+################################################################################
+# 
+# When the script restarts itself upon receiving SIGHUP, that signal is masked. 
+# When starting, we unmask the signals so that they do not stop working for us. 
+# We do this regardless of how we were launched. 
+#
+{ 
+    my $sigset = POSIX::SigSet->new( SIGHUP );  # Just handle HUP
+    sigprocmask(SIG_UNBLOCK, $sigset);
+}
+    
 
 # ------------------------------------------------------------------------------
 # 'Private' vars
@@ -226,7 +247,7 @@ sub _manage_stdhandles {
 # 'Public' functions
 # ------------------------------------------------------------------------------
 
-sub drop_privileges {
+sub drop_privileges(%) {
     # Check parameters:
     croak "Odd number of arguments in drop_privileges() call!"
         if @_ % 2;
@@ -258,7 +279,7 @@ sub drop_privileges {
 
 }
 
-sub daemonize {
+sub daemonize(%) {
     croak "Odd number of arguments in configuration!"
         if @_ %2;
 
@@ -279,8 +300,8 @@ sub daemonize {
         if $params{'pidfile'};
 
     # Step 1.
-    umask($params{'umask'}) or 
-        croak "Cannot set umask", $params{'umask'}, ": $!";
+    defined(umask($params{'umask'})) or 
+        croak qq(Cannot set umask to "), $params{'umask'}, qq(": $!);
 
     # Step 2.
     _fork();
@@ -310,6 +331,20 @@ sub daemonize {
 
     return 1;
     
+}
+
+sub restart() {
+    # See perlipc
+    # make the daemon cross-platform, so exec always calls the script
+    # itself with the right path, no matter how the script was invoked.
+    my $script = File::Basename::basename($0);
+    print "Script is: $script\n";
+    my $SELF = catfile($FindBin::Bin, $script);
+    print "SELF is: $SELF\n";
+    
+    exec($SELF, @ARGV)
+        or croak "$0: couldn't restart: $!";
+
 }
 
 'End of Script::Daemonizer'
