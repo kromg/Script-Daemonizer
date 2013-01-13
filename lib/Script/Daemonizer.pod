@@ -6,7 +6,7 @@ Script::Daemonizer - Turns your script into a UNIX daemon process (the easy way)
 
 =head1 VERSION
 
-Version 0.02_00
+Version 0.02_01
 
 Pre-release. Code lacks comments and a bit of testing. Doc may not be complete. 
 

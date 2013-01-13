@@ -18,7 +18,7 @@ use File::Basename ();
     restart
 );
 
-$Script::Daemonizer::VERSION = '0.02_00';
+$Script::Daemonizer::VERSION = '0.02_01';
 
 ################################################################################
 # HANDLING SIGHUP
@@ -345,6 +345,15 @@ sub restart() {
     exec($SELF, @ARGV)
         or croak "$0: couldn't restart: $!";
 
+}
+
+# Bye default, we unmask SIGHUP but, if other signals must be unmasked too, 
+# then use this and pass in a list of signals to be unmasked.
+sub sigunmask(@) {
+    croak "sigunmask called without arguments"
+        unless @_;
+    my $sigset = POSIX::SigSet->new( @_ );  # Handle all given signals
+    sigprocmask(SIG_UNBLOCK, $sigset);
 }
 
 'End of Script::Daemonizer'
