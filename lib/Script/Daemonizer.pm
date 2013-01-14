@@ -18,7 +18,7 @@ use File::Basename ();
     restart
 );
 
-$Script::Daemonizer::VERSION = '0.02_01';
+$Script::Daemonizer::VERSION = '0.02_02';
 
 ################################################################################
 # HANDLING SIGHUP
@@ -352,7 +352,21 @@ sub restart() {
 sub sigunmask(@) {
     croak "sigunmask called without arguments"
         unless @_;
-    my $sigset = POSIX::SigSet->new( @_ );  # Handle all given signals
+    no strict "refs";
+    # Have to convert manually signal names into numbers. I remove the prefix
+    # POSIX::[SIG] from signal name and add it back again, this allows user to
+    # refer to signals in any way, for example: 
+    # QUIT
+    # SIGQUIT
+    # POSIX::QUIT
+    # POSIX::SIGQUIT
+    my @sigs = map { 
+        ( my $signal = $_ ) =~ s/^POSIX:://;
+        $signal =~ s/^SIG//;
+        $signal = "POSIX::SIG".$signal;
+        &$signal 
+    } @_;
+    my $sigset = POSIX::SigSet->new( @sigs );  # Handle all given signals
     sigprocmask(SIG_UNBLOCK, $sigset);
 }
 
