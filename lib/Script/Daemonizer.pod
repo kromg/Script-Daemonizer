@@ -8,7 +8,6 @@ Script::Daemonizer - Turns your script into a UNIX daemon process (the easy way)
 
 Version 0.90.00
 
-Pre-release. Code lacks comments and a bit of testing. Doc may not be complete. 
 
 =head1 SYNOPSIS
 
@@ -41,11 +40,11 @@ is:
 
 =item 1.* it sets umask() to 0. You must then set explicitly file and 
 directory permissions upon creating them, restore umask() after initialization,
-or specify I<< umask >> option (see L<< /ADVANCED USAGE >> for details).
+or specify I<umask> option (see L</ADVANCED USAGE> for details).
 
 =item 2.  it calls fork(), then the parent exits;
 
-=item 3.  it calls L<< POSIX::setsid() >>>, so the process becomes session leader;
+=item 3.  it calls POSIX::setsid() (see L<POSIX::setsid()>), so the process becomes session leader;
 
 =item 4.  it calls fork() again, then the parent exits; 
 
@@ -54,14 +53,14 @@ or specify I<< umask >> option (see L<< /ADVANCED USAGE >> for details).
 =item 6.* it closes all open file descriptors and tries to
 reopen STDIN from /dev/null;
 
-=item 7.* it ties STDOUT and STDERR to Syslog using  L<< Tie::Syslog >> (if
+=item 7.* it ties STDOUT and STDERR to Syslog using  C<Tie::Syslog> (if
 available, otherwise it reopens them on /dev/null) so that all output is 
-logged to syslog;
+logged to syslog (see L<Tie::Syslog>);
 
 =back
 
 Steps marked by * are configurable; some additional steps are also available if
-explicitly requested; see L<< /ADVANCED USAGE >> for details.
+explicitly requested; see L</ADVANCED USAGE> for details.
 
 =head1 EXPORT
 
@@ -83,7 +82,7 @@ or simply call daemonize() with its full name:
 =head2 daemonize()
 
 It runs through all the steps required to send your program to background as a
-daemon. Its behaviour can be customized a little, see L<< /ADVANCED USAGE >> for
+daemon. Its behaviour can be customized a little, see L</ADVANCED USAGE> for
 details.
 
 =head2 drop_privileges()
@@ -102,19 +101,19 @@ details.
 
 Tries to drop priviles to given EUID/EGID or UID/GID (single (e)uid/(e)gid
 allowed).
-See L<< perldoc perlvar >> for details on IDs. 
+See L<perldoc perlvar> for details on IDs. 
 
 daemonize() will automatically call drop_privileges() if configured to do so
-(guess what? See L<< /ADVANCED USAGE >> for details) but this will happen B<<
-before >> anything else (think of this as step 0). If you need to drop
+(guess what? See L</ADVANCED USAGE> for details) but this will happen 
+B<before> anything else (think of this as step 0). If you need to drop
 privileges at a later moment, use drop_privileges(), otherwise it's probably
 safer to do so while daemonize()-ing. 
 
 =head2 restart()
 
 restart() is there to let you restart completely the daemon. A simple way to
-handle SIGHUP might be restarting, for example (see L<<
-perlipc|http://perldoc.perl.org/perlipc.html#Handling-the-SIGHUP-Signal-in-Daemons >>
+handle SIGHUP might be restarting, for example (see 
+L<perlipc|http://perldoc.perl.org/perlipc.html#Handling-the-SIGHUP-Signal-in-Daemons>
 for details). 
 
     # Restart upon sighup - use a closure to call restart()
@@ -122,7 +121,7 @@ for details).
         Script::Daemonizer::restart;
     }; 
 
-B<< pidfile >> (see L<< /ADVANCED USAGE >> for details) is kept open and locked 
+B<pidfile> (see L</ADVANCED USAGE> for details) is kept open and locked 
 upon restart (if configured) so no race condition should happen. 
 
 You can pass command line args to restart() to modify command line on-the-fly: 
@@ -142,13 +141,13 @@ command-line-parsing modifies @ARGV, for example).
     Script::Daemonizer::sigunmask( @signals );
 
 Strictly related to restart(), sigunmask() is there to let you unmask signals
-without pain. See L<< http://docstore.mik.ua/orelly/perl4/cook/ch17_19.htm >>
+without pain. See L<http://docstore.mik.ua/orelly/perl4/cook/ch17_19.htm>
 for details on why you should unmask signals. In short: inside a signal handler
 the signal that triggered the handler is blocked. If inside a signal handler you
 re-exec() yourself, the new process inherits the blocked signal. That is why you
 could want to unmask that signal after a new start. 
 
-B<< SGIHUP is unmasked by defautl >>, just by saying C<< use Script::Daemonizer >>. 
+B<SGIHUP is unmasked by defautl>, just by saying C<use Script::Daemonizer>. 
 
 If you use restart() with other signals, remember to unmask them: 
 
@@ -162,6 +161,7 @@ If you use restart() with other signals, remember to unmask them:
     # Just in case we came from another instance of ourselves via an exec()
     # (no need to bother for SIGHUP since we unmask it by default, anyway
     # listing it here it's harmless): 
+
     Script::Daemonizer::sigunmask(qw{QUIT USR1});
 
 
@@ -228,13 +228,13 @@ after the second fork() has been completed.
 
 =item * Handling of SIGHUP as a restart()
 
-You must set up restart() as the handler of SIGHUP yourself. See L<< /restart()
->> for details.
+You must set up restart() as the handler of SIGHUP yourself. See 
+L</restart()> for details.
 
 =item * Unmaksing signals
 
 If you use signals other than SIGHUP for restarting, remember to sigunmask()
-them (see L<< /sigunmaks() >> for details).
+them (see L</sigunmaks()> for details).
 
 =back
 
@@ -247,14 +247,14 @@ Advanced options are the following:
 
 Sets the name of the daemon. This is used for logging. 
 
-I<< default >>: script name, got from $0, split on '/';
+I<default>: script name, got from $0, split on '/';
 
 =head3 B<do_not_close_fh>
 
 Skips the close and re-open filehandles phase of initialization. This means that
 the tie-to-syslog part will be skipped as well. 
 
-I<< default >>: C<undef> - close all filehandles; if possible, tie STDOUT and STDERR
+I<default>: C<undef> - close all filehandles; if possible, tie STDOUT and STDERR
 to syslog.
 
 =head3 B<do_not_tie_stdhandles> 
@@ -268,9 +268,9 @@ Define this to close STDOUT/STDERR and reopen them from /dev/null.
     );
 
 Default is to tie STDOUT and STDERR with to facility LOG_DAEMON, priorities
-LOG_INFO and LOG_ERR, logopt 'pid,ndely' (see L<< Tie::Syslog >> for details).
+LOG_INFO and LOG_ERR, logopt 'pid,ndely' (see L<Tie::Syslog> for details).
 
-I<< default >>: C<undef> - tie stdhandles so that output will go to syslog.
+I<default>: C<undef> - tie stdhandles so that output will go to syslog.
 
 =head3 B<keep>
 
@@ -302,7 +302,7 @@ close it (or keep it open, or whatever you prefer):
     );
     open(STDOUT, '>', '/dev/null') or die "Cannot reopen STDOUT on /dev/null: $!"
 
-I<< default >>: C<undef> - close all filehandles.
+I<default>: C<undef> - close all filehandles.
 
 =head3 B<pidfile>
 
@@ -334,7 +334,7 @@ purpose;
 =item * the pid file will serve as a lock file, ensuring no other instances of
 the same daemon will start;
 
-=item * an C<< fuser >> (see L<< fuser(1) >>) on the pidfile will reveal the daemon's pid. If 
+=item * an C<fuser> (see L<fuser(1)>) on the pidfile will reveal the daemon's pid. If 
 the daemon is not running, the pidfile will not be in use by any process 
 (hopefully). A simple: 
 
@@ -344,11 +344,11 @@ will end up killing the daemon (or provides an easy way to signal the daemon).
 
 =back
 
-=head3 B<< tie_to_log4perl >>
+=head3 B<tie_to_log4perl>
 
 Try using Tie::Log4perl instead of Tie::Syslog to redirect STDOUT and STDERR.
 
-I<< default >>: C<undef> - use Tie::Syslog.
+I<default>: C<undef> - use Tie::Syslog.
 
 =head3 B<umask>
 
@@ -365,15 +365,15 @@ default: '/'
 =head2 LOCKING
 
 If you want to be sure no multiple instances of your daemon will be running,
-just use I<pidfile> advanced option. See L<< /pidfile >> for details.
+just use I<pidfile> advanced option. See L</pidfile> for details.
 
 
 =head1 CAVEATS
 
 =head2 Concerning filehandles
 
-Filehandles cannot really be closed. See the sources of L<< Proc::Daemon >> and
-L<< this|http://rt.perl.org/rt3/Ticket/Display.html?id=72526 >> discussion for
+Filehandles cannot really be closed. See the sources of C<Proc::Daemon> and
+L<this|http://rt.perl.org/rt3/Ticket/Display.html?id=72526> discussion for
 details.
 
 Briefly: POSIX::close() issues a close on Operating System's side, but
@@ -392,6 +392,17 @@ daemonize()-ing. The only way to grt rid of them is to close() them all just
 where they were created (or let the filehandles/references go out of scope).  
 
 
+=head1 FAQ
+
+=head2 Q: Why is there no built-in start/stop/* method? 
+
+A: Because to start/stop/* a daemon you usually don't call the daemon itself,
+instead you rely on system tools that allow process control (if you need an S<<
+"init script" >> then write one) and interact with processes through singals.
+Lack of start/stop/* methods is regardes as a feature. 
+
+
+
 =head1 TODO
 
 Some ideas: 
@@ -399,12 +410,13 @@ Some ideas:
 =over 4 
 
 =item * Let user set her own options for tied STDOUT/STDERR (i.e. logopt for
-syslog (L<< Sys::Syslog >>), facility, priority).
+syslog (see L<Sys::Syslog>), facility, priority).
 
-=item * Provide a function to automatically parse command line (via L<Getopt::Long>).
+=item * Provide a function to automatically parse command line (via
+L<Getopt::Long|Getopt::Long>).
 
 =item * Provide a function to automatically handle configuration file (via 
-L<Config::General>).
+L<Config::General|Config::General>).
 
 =back
 
@@ -412,8 +424,8 @@ L<Config::General>).
 
 =head1 AUTHOR
 
-Giacomo Montagner, C<< <gmork at entirelyunlike.net> >>, C<< <gmork.gmork at
-gmail.com> >>
+Giacomo Montagner, C< <gmork at entirelyunlike.net> >, C< <gmork.gmork at
+gmail.com> >
 
 =head1 BUGS
 
