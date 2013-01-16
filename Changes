@@ -1,5 +1,19 @@
 Revision history for Script-Daemonizer
 
-0.01    Date/time
-        First version, released on an unsuspecting world.
+0.90.00     Wed Jan 16 16:20:43 CET 2013
+            First release. Code is complete as I first thought it, but this all 
+            needs some testing.
+
+0.02_03     restart(), sigunmask(), doc OK
+
+0.02_02     sigunmask() tested, doc TBD
+
+0.02_01     added sigunmask() - to be tested
+
+0.02_00     implemented restart(), unmask SIGHUP
+
+0.01_02     fixed _close_fh(); ok w/o Tie::Syslog
+
+0.01_01     reference implementation complete
+
 

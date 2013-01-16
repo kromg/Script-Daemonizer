@@ -1,6 +1,27 @@
-Script-Daemonizer - Turns your script into a UNIX daemon process (the easy way).
+Script-Daemonizer
+=================
+Turns your script into a UNIX daemon process (the easy way).
+
+
+DESCRIPTION
+===========
+
+This module is born out of the need to easyly turn pre-existing scripts into 
+daemons. It's inspired by the behaviour of well known daemons such as named or 
+(x)inetd, and provides these capabilities: 
+
+- daemonizing (go to background, detach from terminal, close open files, 
+  chdir to /, set umask to 0);
+- drop privileges;
+- write a pidfile and use it for locking (single-instance daemons);
+- redirect to syslog or log4perl all messages sent to STDOUT and STDERR;
+- restart the process on-demand.
+
+It's meant to be easy, but also customizable in its behaviour.
+
 
 INSTALLATION
+============
 
 To install this module, run the following commands:
 
@@ -9,7 +30,9 @@ To install this module, run the following commands:
 	make test
 	make install
 
+
 SUPPORT AND DOCUMENTATION
+=========================
 
 After installing, you can find documentation for this module with the
 perldoc command.
@@ -32,6 +55,7 @@ You can also look for information at:
 
 
 LICENSE AND COPYRIGHT
+=====================
 
 Copyright (C) 2012 Giacomo Montagner
 

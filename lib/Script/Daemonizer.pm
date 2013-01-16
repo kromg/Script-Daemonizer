@@ -18,14 +18,30 @@ use File::Basename ();
     restart
 );
 
-$Script::Daemonizer::VERSION = '0.02_03';
+$Script::Daemonizer::VERSION = '0.90.00';
+
+# ------------------------------------------------------------------------------
+# 'Private' vars
+# ------------------------------------------------------------------------------
+my $pidfh;
+my @argv_copy;
+
+
+
+
 
 ################################################################################
 # SAVING @ARGV for restart()
 ################################################################################
+#
 # restart() needs the exact list of arguments in order to relaunch the script, 
 # if requested.
-my @argv_copy;
+# User is free to shift(@ARGV) and/or modify it in any way, we ensure we always
+# get the "real" args (unless someone takes some extra effort to modify them 
+# before we get here).
+# restart() gets an array of args, thoug, so there is no need to tamper with
+# this: 
+
 BEGIN {
     @argv_copy = @ARGV;
 }
@@ -42,12 +58,10 @@ BEGIN {
     my $sigset = POSIX::SigSet->new( SIGHUP );  # Just handle HUP
     sigprocmask(SIG_UNBLOCK, $sigset);
 }
+
+
     
 
-# ------------------------------------------------------------------------------
-# 'Private' vars
-# ------------------------------------------------------------------------------
-my $pidfh;
 
 # ------------------------------------------------------------------------------
 # 'Private' functions
@@ -86,7 +100,9 @@ sub _max_open_files() {
 #########################
 # Open the pidfile (creating it if necessary), then lock it, then truncate it,
 # then write pid into it. Then retun filehandle. 
-sub _write_pidfile {
+# If environment variable $_pidfile_fileno is set, then we assume we're product
+# of an exec() and take that file descriptor as the (already opened) pidfile.
+sub _write_pidfile($) {
     my ($pidfile) = @_;
     my $fh;
 
@@ -96,7 +112,6 @@ sub _write_pidfile {
     my $pidfd = delete $ENV{_pidfile_fileno};
     system(qw{ ls -l }, "/proc/$$/fd");
     if (defined $pidfd && $pidfd =~ /^\d+$/) {
-        #sysopen($fh, "&=$pidfd", O_WRONLY | O_CREAT)
         open($fh, ">&=$pidfd") 
             or croak "can't sysopen fd $pidfd: $!";
         # Re-set close-on-exec bit for pidfile filehandle
@@ -119,10 +134,11 @@ sub _write_pidfile {
     return $fh;
 }
 
-#################
-# sub _close_fh #
-#################
-sub _close_fh {
+###################
+# sub _close_fh(@) #
+###################
+# This closes all filehandles. See perldoc Script::Daemonizer for caveats.
+sub _close_fh(@) {
     shift;  # discard 'keep' label
     my $keep = shift;
     my %keep;
@@ -235,36 +251,46 @@ sub _manage_stdhandles {
         return 1;
     }
 
-    # Try to load Tie::Syslog and issue a warning if module cannot be loaded
+    my $mod = $params{'tie_to_log4perl'} ? 'Tie::Log4perl' : 'Tie::Syslog';
     eval {
-        require Tie::Syslog;
+        require $mod;
     };
     if ($@) {
-        carp "Unable to load Tie::Syslog module. Error is:\n----\n$@----\nI will continue without output";
+        carp "Unable to load $mod module. Error is:\n----\n$@----\nI will continue without output";
         _close 'STDOUT' unless ($keep{1} or $keep{'STDOUT'});
         _close 'STDERR' unless ($keep{2} or $keep{'STDERR'});
         return 0;
     }
 
-    $Tie::Syslog::ident  = $params{'name'};
-    $Tie::Syslog::logopt = 'ndelay,pid';
+    if ($mod eq 'Tie::Log4perl') {
+        tie *STDERR, 'Tie::Log4perl'
+            unless ($keep{2} or $keep{'STDERR'});
+        tie *STDOUT, 'Tie::Log4perl'
+            unless ($keep{1} or $keep{'STDOUT'});
+    } else {
 
-    unless ($keep{1} or $keep{'STDOUT'}) {
-        close STDOUT
-            or croak "Unable to close STDOUT: $!";
-        tie *STDOUT, 'Tie::Syslog', {
-            facility => 'LOG_LOCAL0',
-            priority => 'LOG_INFO',
-        };
-    }
+        # DEFAULT: tie to syslog
 
-    unless ($keep{2} or $keep{'STDERR'}) {
-        close STDERR
-            or croak "Unable to close STDERR: $!";
-        tie *STDERR, 'Tie::Syslog', {
-            facility => 'LOG_LOCAL0',
-            priority => 'LOG_ERR',
-        };
+        $Tie::Syslog::ident  = $params{'name'};
+        $Tie::Syslog::logopt = 'ndelay,pid';
+
+        unless ($keep{1} or $keep{'STDOUT'}) {
+            close STDOUT
+                or croak "Unable to close STDOUT: $!";
+            tie *STDOUT, 'Tie::Syslog', {
+                facility => 'LOG_DAEMON',
+                priority => 'LOG_INFO',
+            };
+        }
+
+        unless ($keep{2} or $keep{'STDERR'}) {
+            close STDERR
+                or croak "Unable to close STDERR: $!";
+            tie *STDERR, 'Tie::Syslog', {
+                facility => 'LOG_DAEMON',
+                priority => 'LOG_ERR',
+            };
+        }
     }
 }
 
@@ -358,7 +384,10 @@ sub daemonize(%) {
     
 }
 
-sub restart() {
+sub restart(@) {
+
+    my @args = @_ ? @_ : @argv_copy;
+
     # See perlipc
     # make the daemon cross-platform, so exec always calls the script
     # itself with the right path, no matter how the script was invoked.
@@ -376,7 +405,7 @@ sub restart() {
         $ENV{_pidfile_fileno} = fileno( $pidfh );
     }
     
-    exec($SELF, @argv_copy)
+    exec($SELF, @args)
         or croak "$0: couldn't restart: $!";
 
 }
@@ -402,6 +431,16 @@ sub sigunmask(@) {
     } @_;
     my $sigset = POSIX::SigSet->new( @sigs );  # Handle all given signals
     sigprocmask(SIG_UNBLOCK, $sigset);
+}
+
+
+################################################################################
+# END - some cleanup is done here                                              #
+################################################################################
+
+END{
+    close($pidfh) 
+        if $pidfh;
 }
 
 'End of Script::Daemonizer'

@@ -6,7 +6,7 @@ Script::Daemonizer - Turns your script into a UNIX daemon process (the easy way)
 
 =head1 VERSION
 
-Version 0.02_03
+Version 0.90.00
 
 Pre-release. Code lacks comments and a bit of testing. Doc may not be complete. 
 
@@ -125,6 +125,18 @@ for details).
 B<< pidfile >> (see L<< /ADVANCED USAGE >> for details) is kept open and locked 
 upon restart (if configured) so no race condition should happen. 
 
+You can pass command line args to restart() to modify command line on-the-fly: 
+
+    use Script::Daemonizer qw/restart/;
+
+    # Do some mangling to @ARGV
+    ...
+
+    restart(@my_modified_argv);
+
+The defaul is to use a copy of @ARGV taken at compile-time (before any
+command-line-parsing modifies @ARGV, for example). 
+
 =head2 sigunmask()
 
     Script::Daemonizer::sigunmask( @signals );
@@ -155,7 +167,7 @@ If you use restart() with other signals, remember to unmask them:
 
 =head1 ADVANCED USAGE
 
-I strive to make this module to support "standard" daemon features
+I strive to make this module support "standard" daemon features
 out-of-the-box (for some definition of "standard"). Some of these features can
 be configured, and some other are enabled only if configured. 
 
@@ -189,6 +201,12 @@ Advanced configuration syntax is the following:
         do_not_tie_stdhandles => 1,                        # skip tie-to-syslog
     );
     
+    # or
+
+    Script::Daemonizer::daemonize(
+        name                  => "Yeah",                   # tag for logging
+        tie_to_log4perl       => 1,                        # try tying with Tie::Log4perl
+    );
     
 
 =head2 OPTIONAL ACTIONS
@@ -208,7 +226,7 @@ This implicitly provides a method to ensure that only one copy of your daemon
 is running at once, because pidfile is locked. PID is written into pidfile only
 after the second fork() has been completed. 
 
-=item * Handling of SIGHUP as a restart
+=item * Handling of SIGHUP as a restart()
 
 You must set up restart() as the handler of SIGHUP yourself. See L<< /restart()
 >> for details.
@@ -249,7 +267,7 @@ Define this to close STDOUT/STDERR and reopen them from /dev/null.
         do_not_tie_stdhandles => 1,
     );
 
-Default is to tie STDOUT and STDERR with to facility LOG_LOCAL0, priorities
+Default is to tie STDOUT and STDERR with to facility LOG_DAEMON, priorities
 LOG_INFO and LOG_ERR, logopt 'pid,ndely' (see L<< Tie::Syslog >> for details).
 
 I<< default >>: C<undef> - tie stdhandles so that output will go to syslog.
@@ -316,7 +334,7 @@ purpose;
 =item * the pid file will serve as a lock file, ensuring no other instances of
 the same daemon will start;
 
-=item * an C<fuser> (fuser(1)) on the pidfile will reveal the daemon's pid. If 
+=item * an C<< fuser >> (see L<< fuser(1) >>) on the pidfile will reveal the daemon's pid. If 
 the daemon is not running, the pidfile will not be in use by any process 
 (hopefully). A simple: 
 
@@ -325,6 +343,12 @@ the daemon is not running, the pidfile will not be in use by any process
 will end up killing the daemon (or provides an easy way to signal the daemon).
 
 =back
+
+=head3 B<< tie_to_log4perl >>
+
+Try using Tie::Log4perl instead of Tie::Syslog to redirect STDOUT and STDERR.
+
+I<< default >>: C<undef> - use Tie::Syslog.
 
 =head3 B<umask>
 
@@ -343,6 +367,31 @@ default: '/'
 If you want to be sure no multiple instances of your daemon will be running,
 just use I<pidfile> advanced option. See L<< /pidfile >> for details.
 
+
+=head1 CAVEATS
+
+=head2 Concerning filehandles
+
+Filehandles cannot really be closed. See the sources of L<< Proc::Daemon >> and
+L<< this|http://rt.perl.org/rt3/Ticket/Display.html?id=72526 >> discussion for
+details.
+
+Briefly: POSIX::close() issues a close on Operating System's side, but
+our process keeps a filehandle opened somewhere. Tracking these filehandles (or
+fh references) from inside a namespace (such as Script::Daemonizer) is neither
+easy, nor possible in general (think about lexical references in other
+namespaces: they're just non accessible from Script::Daemonizer at all, nor
+maybe from main::, if they're confined somewhere in modules). So the best we can
+do is go through a POSIX::close() on all file descriptors and then try to reopen
+as many fh as needed to get all those fd opened on /dev/null, so that associated
+filehandles are still open, but redirected on /dev/null. 
+
+In other words, if your script opens a lot of filehandles before calling
+daemonize(), you will still find them open, but towards /dev/null, after
+daemonize()-ing. The only way to grt rid of them is to close() them all just 
+where they were created (or let the filehandles/references go out of scope).  
+
+
 =head1 TODO
 
 Some ideas: 
@@ -357,15 +406,14 @@ syslog (L<< Sys::Syslog >>), facility, priority).
 =item * Provide a function to automatically handle configuration file (via 
 L<Config::General>).
 
-=item * Use Tie::Log4Perl as an alternative to Tie::Syslog.
-
 =back
 
 
 
 =head1 AUTHOR
 
-Giacomo Montagner, C<< <gmork at entirelyunlike.net> >>
+Giacomo Montagner, C<< <gmork at entirelyunlike.net> >>, C<< <gmork.gmork at
+gmail.com> >>
 
 =head1 BUGS
 
