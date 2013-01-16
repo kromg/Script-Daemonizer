@@ -18,7 +18,17 @@ use File::Basename ();
     restart
 );
 
-$Script::Daemonizer::VERSION = '0.02_02';
+$Script::Daemonizer::VERSION = '0.02_03';
+
+################################################################################
+# SAVING @ARGV for restart()
+################################################################################
+# restart() needs the exact list of arguments in order to relaunch the script, 
+# if requested.
+my @argv_copy;
+BEGIN {
+    @argv_copy = @ARGV;
+}
 
 ################################################################################
 # HANDLING SIGHUP
@@ -78,10 +88,25 @@ sub _max_open_files() {
 # then write pid into it. Then retun filehandle. 
 sub _write_pidfile {
     my ($pidfile) = @_;
-
     my $fh;
-    sysopen($fh, $pidfile, O_WRONLY | O_CREAT)
-        or croak "can't open $pidfile: $!";
+
+    # First we must see if there is a _pidfile_fileno variable in environment;
+    # that means that we were started by an exec() and we must keep the same 
+    # pidfile as before
+    my $pidfd = delete $ENV{_pidfile_fileno};
+    system(qw{ ls -l }, "/proc/$$/fd");
+    if (defined $pidfd && $pidfd =~ /^\d+$/) {
+        #sysopen($fh, "&=$pidfd", O_WRONLY | O_CREAT)
+        open($fh, ">&=$pidfd") 
+            or croak "can't sysopen fd $pidfd: $!";
+        # Re-set close-on-exec bit for pidfile filehandle
+        fcntl($fh, F_SETFD, 1)
+            or die "Can't set close-on-exec flag on pidfile filehandle: $!\n";
+    } else {
+        # Open configured pidfile
+        sysopen($fh, $pidfile, O_WRONLY | O_CREAT)
+            or croak "can't open $pidfile: $!";
+    }
     flock($fh, LOCK_EX|LOCK_NB)
         or croak "can't lock $pidfile: $! - is another instance running?";
     truncate($fh, 0)
@@ -341,8 +366,17 @@ sub restart() {
     print "Script is: $script\n";
     my $SELF = catfile($FindBin::Bin, $script);
     print "SELF is: $SELF\n";
+
+    # $pidf must be kept open across exec() if we don't want race conditions:
+    if ($pidfh) {
+        # Clear close-on-exec bit for pidfile filehandle
+        fcntl($pidfh, F_SETFD, 0)
+            or die "Can't clear close-on-exec flag on pidfile filehandle: $!\n";
+        # Now we must notify ourseves that pidfile is already open
+        $ENV{_pidfile_fileno} = fileno( $pidfh );
+    }
     
-    exec($SELF, @ARGV)
+    exec($SELF, @argv_copy)
         or croak "$0: couldn't restart: $!";
 
 }

@@ -6,7 +6,7 @@ Script::Daemonizer - Turns your script into a UNIX daemon process (the easy way)
 
 =head1 VERSION
 
-Version 0.02_01
+Version 0.02_03
 
 Pre-release. Code lacks comments and a bit of testing. Doc may not be complete. 
 
@@ -122,6 +122,36 @@ for details).
         Script::Daemonizer::restart;
     }; 
 
+B<< pidfile >> (see L<< /ADVANCED USAGE >> for details) is kept open and locked 
+upon restart (if configured) so no race condition should happen. 
+
+=head2 sigunmask()
+
+    Script::Daemonizer::sigunmask( @signals );
+
+Strictly related to restart(), sigunmask() is there to let you unmask signals
+without pain. See L<< http://docstore.mik.ua/orelly/perl4/cook/ch17_19.htm >>
+for details on why you should unmask signals. In short: inside a signal handler
+the signal that triggered the handler is blocked. If inside a signal handler you
+re-exec() yourself, the new process inherits the blocked signal. That is why you
+could want to unmask that signal after a new start. 
+
+B<< SGIHUP is unmasked by defautl >>, just by saying C<< use Script::Daemonizer >>. 
+
+If you use restart() with other signals, remember to unmask them: 
+
+    # Restart on SIGHUP, SIGQUIT and SIGUSR1
+    for my $nal in (qw/HUP QUIT USR1/) {
+        $SIG{$nal} = sub {
+            Script::Daemonizer::restart;
+        }
+    }
+
+    # Just in case we came from another instance of ourselves via an exec()
+    # (no need to bother for SIGHUP since we unmask it by default, anyway
+    # listing it here it's harmless): 
+    Script::Daemonizer::sigunmask(qw{QUIT USR1});
+
 
 =head1 ADVANCED USAGE
 
@@ -177,6 +207,16 @@ It happens before anything else. This simply calls drop_privileges() internally.
 This implicitly provides a method to ensure that only one copy of your daemon 
 is running at once, because pidfile is locked. PID is written into pidfile only
 after the second fork() has been completed. 
+
+=item * Handling of SIGHUP as a restart
+
+You must set up restart() as the handler of SIGHUP yourself. See L<< /restart()
+>> for details.
+
+=item * Unmaksing signals
+
+If you use signals other than SIGHUP for restarting, remember to sigunmask()
+them (see L<< /sigunmaks() >> for details).
 
 =back
 
@@ -282,7 +322,7 @@ the daemon is not running, the pidfile will not be in use by any process
 
     $ fuser -k $PIDFILE
 
-will end up killing the daemon (or provides an easy way to signal the daemon). 
+will end up killing the daemon (or provides an easy way to signal the daemon).
 
 =back
 
@@ -301,7 +341,7 @@ default: '/'
 =head2 LOCKING
 
 If you want to be sure no multiple instances of your daemon will be running,
-just use I<pidfile> advanced option. See I<pidfile> for details.
+just use I<pidfile> advanced option. See L<< /pidfile >> for details.
 
 =head1 TODO
 
@@ -317,12 +357,7 @@ syslog (L<< Sys::Syslog >>), facility, priority).
 =item * Provide a function to automatically handle configuration file (via 
 L<Config::General>).
 
-=item * Provide a restart function.
-Handling signal unmasking and re-exec()'ing themselves can be non trivial. See
-L<< perlipc >> for details. 
-
-=item * Let user decide if SIGHUP is handled as a full restart or a 
-configuration reload.
+=item * Use Tie::Log4Perl as an alternative to Tie::Syslog.
 
 =back
 
@@ -389,7 +424,7 @@ Earl Hood and Detlef Pilzecker.
 
 =head1 LICENSE AND COPYRIGHT
 
-Copyright (C) 2012 Giacomo Montagner.
+Copyright (C) 2012 Giacomo Montagner, all rights reserved.
 
 This program is free software; you can redistribute it and/or modify it
 under the terms of either: the GNU General Public License as published
