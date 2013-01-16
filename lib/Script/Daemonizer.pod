@@ -401,6 +401,11 @@ instead you rely on system tools that allow process control (if you need an S<<
 "init script" >> then write one) and interact with processes through singals.
 Lack of start/stop/* methods is regardes as a feature. 
 
+=head2 Q: Why are Tie::Syslog and Tie::Log4perl not listed as prerequisites? 
+
+A: Because you may want to skip Syslog/Log4perl support and not install those
+modules. This module will work nonetheless, without using them (and without the
+features they provide, of course).
 
 
 =head1 TODO
