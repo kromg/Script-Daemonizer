@@ -498,6 +498,11 @@ by the Free Software Foundation; or the Artistic License.
 See http://dev.perl.org/licenses/ for more information.
 
 
+=head1 AVAILABILITY
+
+Latest sources are available from https://github.com/kromg/Script-Daemonizer
+
+
 =cut
 
 
