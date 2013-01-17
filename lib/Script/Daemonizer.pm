@@ -18,7 +18,7 @@ use File::Basename ();
     restart
 );
 
-$Script::Daemonizer::VERSION = '0.90.01';
+$Script::Daemonizer::VERSION = '0.91.01';
 
 # ------------------------------------------------------------------------------
 # 'Private' vars
@@ -242,6 +242,11 @@ sub _manage_stdhandles {
     # STDERR (2)
     my %keep = map { $_ => 1 } @$keep;
 
+    # Return immediately if we have nothing to do:
+    return 1 if ( 
+        ($keep{1} or $keep{'STDOUT'}) && ($keep{2} or $keep{'STDERR'}) 
+    );
+
     # If we were not requested to tie stdhandles, we may safely close them and
     # return now. 
     if ($params{'do_not_tie_stdhandles'}) {
@@ -250,47 +255,40 @@ sub _manage_stdhandles {
         return 1;
     }
 
-    my $mod = $params{'tie_to_log4perl'} ? 'Tie::Log4perl' : 'Tie::Syslog';
     eval {
-        require $mod;
+        require Tie::Syslog;
     };
+
     if ($@) {
-        carp "Unable to load $mod module. Error is:\n----\n$@----\nI will continue without output";
+        carp "Unable to load Tie::Syslog module. Error is:\n----\n$@----\nI will continue without output";
         _close 'STDOUT' unless ($keep{1} or $keep{'STDOUT'});
         _close 'STDERR' unless ($keep{2} or $keep{'STDERR'});
         return 0;
     }
 
-    if ($mod eq 'Tie::Log4perl') {
-        tie *STDERR, 'Tie::Log4perl'
-            unless ($keep{2} or $keep{'STDERR'});
-        tie *STDOUT, 'Tie::Log4perl'
-            unless ($keep{1} or $keep{'STDOUT'});
-    } else {
+    # DEFAULT: tie to syslog
 
-        # DEFAULT: tie to syslog
+    $Tie::Syslog::ident  = $params{'name'};
+    $Tie::Syslog::logopt = 'ndelay,pid';
 
-        $Tie::Syslog::ident  = $params{'name'};
-        $Tie::Syslog::logopt = 'ndelay,pid';
-
-        unless ($keep{1} or $keep{'STDOUT'}) {
-            close STDOUT
-                or croak "Unable to close STDOUT: $!";
-            tie *STDOUT, 'Tie::Syslog', {
-                facility => 'LOG_DAEMON',
-                priority => 'LOG_INFO',
-            };
-        }
-
-        unless ($keep{2} or $keep{'STDERR'}) {
-            close STDERR
-                or croak "Unable to close STDERR: $!";
-            tie *STDERR, 'Tie::Syslog', {
-                facility => 'LOG_DAEMON',
-                priority => 'LOG_ERR',
-            };
-        }
+    unless ($keep{1} or $keep{'STDOUT'}) {
+        close STDOUT
+            or croak "Unable to close STDOUT: $!";
+        tie *STDOUT, 'Tie::Syslog', {
+            facility => 'LOG_DAEMON',
+            priority => 'LOG_INFO',
+        };
     }
+
+    unless ($keep{2} or $keep{'STDERR'}) {
+        close STDERR
+            or croak "Unable to close STDERR: $!";
+        tie *STDERR, 'Tie::Syslog', {
+            facility => 'LOG_DAEMON',
+            priority => 'LOG_ERR',
+        };
+    }
+    
 }
 
 # ------------------------------------------------------------------------------

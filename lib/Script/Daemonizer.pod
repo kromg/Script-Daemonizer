@@ -6,7 +6,7 @@ Script::Daemonizer - Turns your script into a UNIX daemon process (the easy way)
 
 =head1 VERSION
 
-Version 0.90.00
+Version 0.91.00
 
 
 =head1 SYNOPSIS
@@ -201,13 +201,6 @@ Advanced configuration syntax is the following:
         do_not_tie_stdhandles => 1,                        # skip tie-to-syslog
     );
     
-    # or
-
-    Script::Daemonizer::daemonize(
-        name                  => "Yeah",                   # tag for logging
-        tie_to_log4perl       => 1,                        # try tying with Tie::Log4perl
-    );
-    
 
 =head2 OPTIONAL ACTIONS
 
@@ -343,12 +336,6 @@ the daemon is not running, the pidfile will not be in use by any process
 will end up killing the daemon (or provides an easy way to signal the daemon).
 
 =back
-
-=head3 B<tie_to_log4perl>
-
-Try using Tie::Log4perl instead of Tie::Syslog to redirect STDOUT and STDERR.
-
-I<default>: C<undef> - use Tie::Syslog.
 
 =head3 B<umask>
 
