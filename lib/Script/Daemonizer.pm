@@ -7,7 +7,7 @@ use Carp qw/carp croak/;
 use POSIX qw(:signal_h);
 use Fcntl qw/:DEFAULT :flock/;
 use FindBin ();
-use File::Spec::Functions;
+use File::Spec;
 use File::Basename ();
 
 @Script::Daemonizer::ISA = qw(Exporter);
@@ -18,15 +18,14 @@ use File::Basename ();
     restart
 );
 
-$Script::Daemonizer::VERSION = '0.90.00';
+$Script::Daemonizer::VERSION = '0.90.01';
 
 # ------------------------------------------------------------------------------
 # 'Private' vars
 # ------------------------------------------------------------------------------
 my $pidfh;
 my @argv_copy;
-
-
+my $devnull = File::Spec->devnull;
 
 
 
@@ -166,8 +165,8 @@ sub _close_fh(@) {
     # First of all, try to close STDIN and reopen it from /dev/null
     unless ($keep{0}) {
         close(STDIN);
-        open STDIN, '<', '/dev/null'
-            or croak "Cannot open /dev/null for reading: $!";
+        open STDIN, '<', $devnull
+            or croak "Cannot open $devnull for reading: $!";
     }
 
     # -------------------------------------------------------------------------
@@ -203,8 +202,8 @@ sub _close_fh(@) {
         my @fh;
         my $cur = -1;
         while ($cur < $highest_fd) {
-            open my $fh, '<', '/dev/null' or
-                croak "Cannot open /dev/null for reading: $!";
+            open my $fh, '<', $devnull
+                or croak "Cannot open $devnull for reading: $!";
             push @fh, $fh;
             $cur = fileno( $fh );
             print "Reopened $cur fd\n";
@@ -224,7 +223,7 @@ sub _close($) {
     no strict "refs";
     close *$fh 
         or croak "Unable to close $fh: $!";
-    my $destination = $Script::Daemonizer::DEBUG || '/dev/null';
+    my $destination = $Script::Daemonizer::DEBUG || $devnull;
     open *$fh, '>', $destination
         or croak "Unable to reopen $fh on $destination: $!";
         # I'd really like to see whenever this "croak" will actually print 
@@ -393,7 +392,7 @@ sub restart(@) {
     # itself with the right path, no matter how the script was invoked.
     my $script = File::Basename::basename($0);
     print "Script is: $script\n";
-    my $SELF = catfile($FindBin::Bin, $script);
+    my $SELF = File::Spec->catfile($FindBin::Bin, $script);
     print "SELF is: $SELF\n";
 
     # $pidf must be kept open across exec() if we don't want race conditions:
