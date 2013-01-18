@@ -6,7 +6,7 @@ Script::Daemonizer - Turns your script into a UNIX daemon process (the easy way)
 
 =head1 VERSION
 
-Version 0.91.00
+Version 0.91.02
 
 
 =head1 SYNOPSIS
@@ -82,7 +82,7 @@ or simply call daemonize() with its full name:
 =head2 daemonize()
 
 It runs through all the steps required to send your program to background as a
-daemon. Its behaviour can be customized a little, see L</ADVANCED USAGE> for
+daemon. Its behavior can be customized a little, see L</ADVANCED USAGE> for
 details.
 
 =head2 drop_privileges()
@@ -99,7 +99,7 @@ details.
         gid  => $to_gid,
     );
 
-Tries to drop priviles to given EUID/EGID or UID/GID (single (e)uid/(e)gid
+Tries to drop privileges to given EUID/EGID or UID/GID (single (e)uid/(e)gid
 allowed).
 See L<perldoc perlvar> for details on IDs. 
 
@@ -147,7 +147,7 @@ the signal that triggered the handler is blocked. If inside a signal handler you
 re-exec() yourself, the new process inherits the blocked signal. That is why you
 could want to unmask that signal after a new start. 
 
-B<SGIHUP is unmasked by defautl>, just by saying C<use Script::Daemonizer>. 
+B<SGIHUP is unmasked by default>, just by saying C<use Script::Daemonizer>. 
 
 If you use restart() with other signals, remember to unmask them: 
 
@@ -375,7 +375,7 @@ filehandles are still open, but redirected on /dev/null.
 
 In other words, if your script opens a lot of filehandles before calling
 daemonize(), you will still find them open, but towards /dev/null, after
-daemonize()-ing. The only way to grt rid of them is to close() them all just 
+daemonize()-ing. The only way to get rid of them is to close() them all just 
 where they were created (or let the filehandles/references go out of scope).  
 
 
@@ -385,14 +385,14 @@ where they were created (or let the filehandles/references go out of scope).
 
 A: Because to start/stop/* a daemon you usually don't call the daemon itself,
 instead you rely on system tools that allow process control (if you need an S<<
-"init script" >> then write one) and interact with processes through singals.
-Lack of start/stop/* methods is regardes as a feature. 
+"init script" >> then write one) and interact with processes through signals.
+Lack of start/stop/* methods is regarded as a feature. 
 
-=head2 Q: Why are Tie::Syslog and Tie::Log4perl not listed as prerequisites? 
+=head2 Q: Why is Tie::Syslog not listed as prerequisites? 
 
-A: Because you may want to skip Syslog/Log4perl support and not install those
-modules. This module will work nonetheless, without using them (and without the
-features they provide, of course).
+A: Because you may want to skip Syslog support and not install that
+module. Script::Daemonizer module will work nonetheless, without using
+Tie::Syslog them (and without the features it provides, of course).
 
 
 =head1 TODO

@@ -1,5 +1,8 @@
 Revision history for Script-Daemonizer
 
+0.91.02     Fri Jan 18 10:59:45 CET 2013
+            - Fixed some doc typos
+
 0.91.01     Thu Jan 17 11:52:47 CET 2013
             - daemonize() tried to load Tie::Syslog even if both stdout and 
               stderr were specified in keep => []; fixed this. 

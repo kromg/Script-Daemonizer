@@ -18,7 +18,7 @@ use File::Basename ();
     restart
 );
 
-$Script::Daemonizer::VERSION = '0.91.01';
+$Script::Daemonizer::VERSION = '0.91.02';
 
 # ------------------------------------------------------------------------------
 # 'Private' vars
