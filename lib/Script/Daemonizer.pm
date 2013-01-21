@@ -18,7 +18,7 @@ use File::Basename ();
     restart
 );
 
-$Script::Daemonizer::VERSION = '0.91.02';
+$Script::Daemonizer::VERSION = '0.92.00';
 
 # ------------------------------------------------------------------------------
 # 'Private' vars
@@ -112,13 +112,13 @@ sub _write_pidfile($) {
     system(qw{ ls -l }, "/proc/$$/fd");
     if (defined $pidfd && $pidfd =~ /^\d+$/) {
         open($fh, ">&=$pidfd") 
-            or croak "can't sysopen fd $pidfd: $!";
+            or croak "can't open fd $pidfd: $!";
         # Re-set close-on-exec bit for pidfile filehandle
         fcntl($fh, F_SETFD, 1)
             or die "Can't set close-on-exec flag on pidfile filehandle: $!\n";
     } else {
         # Open configured pidfile
-        sysopen($fh, $pidfile, O_WRONLY | O_CREAT)
+        sysopen($fh, $pidfile, O_RDWR | O_CREAT)
             or croak "can't open $pidfile: $!";
     }
     flock($fh, LOCK_EX|LOCK_NB)
@@ -361,10 +361,29 @@ sub daemonize(%) {
     # Step 4.
     _fork();
     
+    #
     # Step 4.5 - OPTIONAL: if pidfile is in use, now it's the moment to dump our
     # pid into it.
-    print $pidfh $$
-        if $params{'pidfile'};
+    #
+    ### NEW from 0.92.00 - try to lock pidfile again: on some platforms* the
+    # lock is not preserved across fork(), so we must ensure again that no one
+    # is holding the lock. This allows a tiny race condition between the first
+    # and the second lock attempt, however nothing harmful is done between these
+    # two operations - steps 1 to 4 can be done safely even if another instance
+    # is running. The only reason I didn't remove the first flock() attempt is
+    # that if we need to fail and we have the chance to do it sooner, then it's
+    # preferable, since at step 0.1 we're still attached to our controlling
+    # process (and to the terminal, if launched by user) and the failure is more
+    # noticeable (maybe).
+    #
+    # * Failing platforms (from CPANTesters): FreeBSD, Mac OS X, OpenBSD, Solaris;
+    #   Linux and NetBSD seem to be unaffected.
+    # 
+    if ($pidfh) {
+        flock($pidfh, LOCK_EX|LOCK_NB)
+            or croak "can't lock ", $params{'pidfile'}, ": $! - is another instance running?";
+        print $pidfh $$;
+    }
 
     # Step 5.
     chdir($params{'working_dir'}) or 

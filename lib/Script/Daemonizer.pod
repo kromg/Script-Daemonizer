@@ -6,7 +6,7 @@ Script::Daemonizer - Turns your script into a UNIX daemon process (the easy way)
 
 =head1 VERSION
 
-Version 0.91.02
+Version 0.92.00
 
 
 =head1 SYNOPSIS
@@ -121,8 +121,9 @@ for details).
         Script::Daemonizer::restart;
     }; 
 
-B<pidfile> (see L</ADVANCED USAGE> for details) is kept open and locked 
-upon restart (if configured) so no race condition should happen. 
+B<pidfile> (see L</ADVANCED USAGE> for details) is kept open 
+upon restart (if configured), but on some platforms (see L</Concerning locks>
+for details) the lock is not preserved, so a race condition may still happen. 
 
 You can pass command line args to restart() to modify command line on-the-fly: 
 
@@ -377,6 +378,21 @@ In other words, if your script opens a lot of filehandles before calling
 daemonize(), you will still find them open, but towards /dev/null, after
 daemonize()-ing. The only way to get rid of them is to close() them all just 
 where they were created (or let the filehandles/references go out of scope).  
+
+
+=head2 Concerning locks
+
+On some platforms (FreeBSD, Mac OS X, OpenBSD, Solaris) the lock on the pidfile
+is not preserved across fork(), so from 0.91 to 0.92 I added a second flock()
+after the second fork(). This allows a race condition between the first and the
+second flock(), but it should not be a problem, since the lock could be as well
+tried just after the second fork(). The reason I left the first attempt in place
+is that if we have to fail anyway, it's better to do it as early as possible. 
+B<The real race condition> may happen, instead, when the process is restarted
+using restart() (or by any other mean), because if lock on pidfile is not
+preserved, someone could take the lock on it before we're able to complete
+restart, thus causing the process to exit. 
+
 
 
 =head1 FAQ

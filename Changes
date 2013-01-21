@@ -1,5 +1,9 @@
 Revision history for Script-Daemonizer
 
+0.92.00     Mon Jan 21 13:51:36 CET 2013
+            - Second flock() after second fork(), to enforce pidfile locking
+              even on platforms that do not propagate lock across fork(). 
+
 0.91.02     Fri Jan 18 10:59:45 CET 2013
             - Fixed some doc typos
 
