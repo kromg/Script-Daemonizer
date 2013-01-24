@@ -6,19 +6,32 @@ Script::Daemonizer - Turns your script into a UNIX daemon process (the easy way)
 
 =head1 VERSION
 
-Version 0.92.00
+Version 0.93.00
+
+Interface changed from procedural to OO across 0.92-0.93 transition
 
 
 =head1 SYNOPSIS
 
+B<Please consider using Daemon::Control instead of Script::Daemonizer>
+
     use Script::Daemonizer;
     ...
-    Script::Daemonizer::daemonize();
-    Script::Daemonizer::drop_privileges(
+    my $daemon = new Script::Daemonizer();
+    ...
+    # Set SIGHUP as restarter
+    $SIG{HUP} = sub {
+        $daemon->restart();
+    };
+    ...
+    # Go to background
+    $daemon->daemonize();
+    ...
+    # Drop privileges if needed
+    $daemon->drop_privileges(
         uid => $to_uid, 
         gid => $to_gid
     );
-    Script::Daemonizer::restart();
     ...
 
 =head1 ABSTRACT
@@ -42,42 +55,42 @@ is:
 directory permissions upon creating them, restore umask() after initialization,
 or specify I<umask> option (see L</ADVANCED USAGE> for details).
 
-=item 2.  it calls fork(), then the parent exits;
+=item 2.* it calls fork(), then the parent exits;
 
 =item 3.  it calls POSIX::setsid() (see L<POSIX::setsid()>), so the process becomes session leader;
 
-=item 4.  it calls fork() again, then the parent exits; 
+=item 4.* it calls fork() again, then the parent exits; 
 
 =item 5.* it changes its working directory to "/";
 
-=item 6.* it closes all open file descriptors and tries to
-reopen STDIN from /dev/null;
+=item 6.* NO LONGER IMPLEMENTED (since 0.93.00) - closing file descriptors
+It's practically impossible, so this step has been removed. 
 
 =item 7.* it ties STDOUT and STDERR to Syslog using  C<Tie::Syslog> (if
 available, otherwise it reopens them on /dev/null) so that all output is 
-logged to syslog (see L<Tie::Syslog>);
+logged to syslog (see L<Tie::Syslog>); open STDIN on /dev/null.
 
 =back
 
 Steps marked by * are configurable; some additional steps are also available if
 explicitly requested; see L</ADVANCED USAGE> for details.
 
-=head1 EXPORT
 
-Nothing is exported by default, and nothing needs to be imported. You can 
+=head1 METHODS
 
-    use Script::Daemonize qw(daemonize);
-    ...
-    daemonize();
+=head2 new()
 
-or simply call daemonize() with its full name: 
+Creates a new instance of a Script::Daemonizer object. If you just want to start
+with defaults, just call it with no args: 
 
-    use Script::Daemonize;
-    ...
-    Script::Daemonizer::daemonize();
+    # A new daemon
+    my $daemon = new Script::Daemonizer ();
 
+    # or, if you prefer:
+    my $daemon = Script::Daemonizer->new();
 
-=head1 SUBROUTINES
+To customize your daemon see L</ADVANCED USAGE>.
+
 
 =head2 daemonize()
 
@@ -88,13 +101,13 @@ details.
 =head2 drop_privileges()
 
     # Just drop effective user/group id:
-    drop_privileges(
+    $daemon->drop_privileges(
         euid => $to_euid,
         egid => $to_egid,
     );
 
     # Drop both effective and real ids: 
-    drop_privileges(
+    $daemon->drop_privileges(
         uid  => $to_uid,
         gid  => $to_gid,
     );
@@ -118,7 +131,7 @@ for details).
 
     # Restart upon sighup - use a closure to call restart()
     $SIG{HUP} = sub {
-        Script::Daemonizer::restart;
+        $daemon->restart;
     }; 
 
 B<pidfile> (see L</ADVANCED USAGE> for details) is kept open 
@@ -127,19 +140,20 @@ for details) the lock is not preserved, so a race condition may still happen.
 
 You can pass command line args to restart() to modify command line on-the-fly: 
 
-    use Script::Daemonizer qw/restart/;
-
-    # Do some mangling to @ARGV
+    use Script::Daemonizer;
     ...
-
-    restart(@my_modified_argv);
+    unless( some_condition_on(@ARGV) ) {
+        # Do some mangling to @ARGV
+        ...
+        $daemon->restart(@my_modified_argv);
+    }
 
 The defaul is to use a copy of @ARGV taken at compile-time (before any
 command-line-parsing modifies @ARGV, for example). 
 
 =head2 sigunmask()
 
-    Script::Daemonizer::sigunmask( @signals );
+    $daemon->sigunmask( @signals );
 
 Strictly related to restart(), sigunmask() is there to let you unmask signals
 without pain. See L<http://docstore.mik.ua/orelly/perl4/cook/ch17_19.htm>
@@ -155,7 +169,7 @@ If you use restart() with other signals, remember to unmask them:
     # Restart on SIGHUP, SIGQUIT and SIGUSR1
     for my $nal in (qw/HUP QUIT USR1/) {
         $SIG{$nal} = sub {
-            Script::Daemonizer::restart;
+            $daemon->restart;
         }
     }
 
@@ -163,7 +177,7 @@ If you use restart() with other signals, remember to unmask them:
     # (no need to bother for SIGHUP since we unmask it by default, anyway
     # listing it here it's harmless): 
 
-    Script::Daemonizer::sigunmask(qw{QUIT USR1});
+    $daemon->sigunmask(qw{QUIT USR1});
 
 
 =head1 ADVANCED USAGE
@@ -177,30 +191,19 @@ be configured, and some other are enabled only if configured.
 Advanced configuration syntax is the following: 
 
     use Script::Daemonizer;
-    Script::Daemonizer::daemonize(
-        name            => "My wonderful new daemon",      # tag for logging
-        do_not_close_fh => 1,                              # don't touch my filehandles!
-        umask           => $my_umask,                      # set umask to $my_umask
-        working_dir     => "/var/ftp",                     # try to chdir here
-        drop_privileges => {                               # same as drop_privileges()
+    my $daemon = new Script::Daemonizer (
+        name            => "My wonderful new daemon",  # tag for logging
+        umask           => $my_umask,                  # set umask to $my_umask
+        working_dir     => "/var/ftp",                 # try to chdir here
+        drop_privileges => {                           # call drop_privileges()
             uid  => $to_uid,
             gid  => $to_gid,
         },
+        do_not_tie_stdhandles => 1,                    # skip tie-to-syslog
+        fork            => 2,                          # for # number of times (0, 1 or 2)
+        pidfile         => '/var/run/mydaemon.pid',    # write and lock this pidfile
     );
 
-    # or
-
-    Script::Daemonizer::daemonize(
-        name => "My wonderful new daemon",                 # tag for logging
-        keep => [ 0, 1, 2, $myfh, $anotherfh, 42 ],        # don't close these FD/FH
-    );
-
-    # or
-
-    Script::Daemonizer::daemonize(
-        name                  => "ddddddaeeemonnn",        # tag for logging
-        do_not_tie_stdhandles => 1,                        # skip tie-to-syslog
-    );
     
 
 =head2 OPTIONAL ACTIONS
@@ -218,7 +221,7 @@ It happens before anything else. This simply calls drop_privileges() internally.
 
 This implicitly provides a method to ensure that only one copy of your daemon 
 is running at once, because pidfile is locked. PID is written into pidfile only
-after the second fork() has been completed. 
+after the last fork() has been completed. 
 
 =item * Handling of SIGHUP as a restart()
 
@@ -241,62 +244,16 @@ Advanced options are the following:
 
 Sets the name of the daemon. This is used for logging. 
 
-I<default>: script name, got from $0, split on '/';
-
-=head3 B<do_not_close_fh>
-
-Skips the close and re-open filehandles phase of initialization. This means that
-the tie-to-syslog part will be skipped as well. 
-
-I<default>: C<undef> - close all filehandles; if possible, tie STDOUT and STDERR
-to syslog.
+I<default>: script name, got from $0, split on system path separator;
 
 =head3 B<do_not_tie_stdhandles> 
 
 Define this to close STDOUT/STDERR and reopen them from /dev/null.
 
-    # close both stdhandles and reopen them on /dev/null
-    Script::Daemonizer::daemonize(
-        name                  => 'Sort of a daemon',
-        do_not_tie_stdhandles => 1,
-    );
-
 Default is to tie STDOUT and STDERR with to facility LOG_DAEMON, priorities
 LOG_INFO and LOG_ERR, logopt 'pid,ndely' (see L<Tie::Syslog> for details).
 
 I<default>: C<undef> - tie stdhandles so that output will go to syslog.
-
-=head3 B<keep>
-
-    # Unqualified NAMES will be qualified as *main::$FH_NAME
-    Script::Daemonizer::daemonize(
-        keep => [
-            "STDIN",                # A filehandle, by name
-            *STDOUT,                # A filehandle
-            \*STDERR,               # A fh reference
-            3,                      # file descriptor number
-            "MyPkg::FH",            # F-Q filehandle name
-            $myfh                   # Another fh reference
-        ],
-    );
-
-This option requires a reference to an array containing the filehandles to be
-kept open, or the corresponding file descriptor (as returned by C<fileno()>).
-It is ingored if I<do_not_close_fh> was specified (because redundant).
-
-If STDOUT/STDERR (or the corresponding file descriptor: 1 or 2) were specified,
-then that handle would not be closed and, consequently, not tied to Syslog. 
-To tie just one of the two filehandles, specify the other in I<keep> and then
-close it (or keep it open, or whatever you prefer):
-
-    # Tie just STDERR to syslog, discard STDOUT:
-    Script::Daemonizer::daemonize(
-        name => 'Sort of a daemon',
-        keep => [ 1 ],
-    );
-    open(STDOUT, '>', '/dev/null') or die "Cannot reopen STDOUT on /dev/null: $!"
-
-I<default>: C<undef> - close all filehandles.
 
 =head3 B<pidfile>
 
@@ -311,7 +268,7 @@ This will try to:
 =back
 
 If this operation fails, daemonize() will croak(). Otherwise, PID of the process
-will be written to the named pidfile after the second fork() is done. 
+will be written to the named pidfile after the last fork() is done. 
 
     Script::Daemonizer::daemonize(
         name    => 'A new daemon',
@@ -348,7 +305,7 @@ default: 0
 
 Try to chdir() to the specified directory.
 
-default: '/'
+default: root (/) dir.
 
 =head2 LOCKING
 
@@ -360,33 +317,17 @@ just use I<pidfile> advanced option. See L</pidfile> for details.
 
 =head2 Concerning filehandles
 
-Filehandles cannot really be closed. See the sources of C<Proc::Daemon> and
-L<this|http://rt.perl.org/rt3/Ticket/Display.html?id=72526> discussion for
-details.
-
-Briefly: POSIX::close() issues a close on Operating System's side, but
-our process keeps a filehandle opened somewhere. Tracking these filehandles (or
-fh references) from inside a namespace (such as Script::Daemonizer) is neither
-easy, nor possible in general (think about lexical references in other
-namespaces: they're just non accessible from Script::Daemonizer at all, nor
-maybe from main::, if they're confined somewhere in modules). So the best we can
-do is go through a POSIX::close() on all file descriptors and then try to reopen
-as many fh as needed to get all those fd opened on /dev/null, so that associated
-filehandles are still open, but redirected on /dev/null. 
-
-In other words, if your script opens a lot of filehandles before calling
-daemonize(), you will still find them open, but towards /dev/null, after
-daemonize()-ing. The only way to get rid of them is to close() them all just 
-where they were created (or let the filehandles/references go out of scope).  
+Filehandles cannot really be closed. Following advice from Matt S. Trout I will
+skip filehandle-closing step completely. 
 
 
 =head2 Concerning locks
 
 On some platforms (FreeBSD, Mac OS X, OpenBSD, Solaris) the lock on the pidfile
 is not preserved across fork(), so from 0.91 to 0.92 I added a second flock()
-after the second fork(). This allows a race condition between the first and the
+after the last fork(). This allows a race condition between the first and the
 second flock(), but it should not be a problem, since the lock could be as well
-tried just after the second fork(). The reason I left the first attempt in place
+tried just after the last fork(). The reason I left the first attempt in place
 is that if we have to fail anyway, it's better to do it as early as possible. 
 B<The real race condition> may happen, instead, when the process is restarted
 using restart() (or by any other mean), because if lock on pidfile is not
@@ -402,7 +343,8 @@ restart, thus causing the process to exit.
 A: Because to start/stop/* a daemon you usually don't call the daemon itself,
 instead you rely on system tools that allow process control (if you need an S<<
 "init script" >> then write one) and interact with processes through signals.
-Lack of start/stop/* methods is regarded as a feature. 
+Lack of start/stop/* methods is regarded as a feature. Try L<Daemon::Control> if
+you're searching for such an interface.
 
 =head2 Q: Why is Tie::Syslog not listed as prerequisites? 
 
@@ -485,6 +427,9 @@ S<Copyright 2005 Addison Wesley Professional>
 
 =item * Part of the code was inspired (or taken) from Proc::Daemon, by 
 Earl Hood and Detlef Pilzecker. 
+
+=item * Thanks to Matt S. Trout for his help in "uncrappyfying" the code. It's
+still quite crappy but maybe better than before :)
 
 =back
 

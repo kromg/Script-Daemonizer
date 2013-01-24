@@ -1,15 +1,24 @@
 #!perl -T
 
-use Test::More tests => 1;
+use Test::More tests => 2;
 use Script::Daemonizer;
 
-# daemonize() croaks if odd number of elemets was passed
+# new() croaks if odd number of elemets was passed
 eval q(
-    Script::Daemonizer::daemonize(
+    my $daemon = new Script::Daemonizer(
         name => 'Test',
-        keep =>
+        workdir =>
     );
 );
 
-like($@, qr/Odd number/, 'daemonize() must croak() if odd number of elements in config');
+like($@, qr/Odd number/, 'new() must croak() if odd number of elements in config');
 
+# new() croaks if unknown parameter passed
+eval q(
+    my $daemon = new Script::Daemonizer(
+        name => 'Test',
+        unknown_param => 'bla',
+    );
+);
+
+like($@, qr/Invalid argument/, 'new() must croak() if config contains an unknown parameter');

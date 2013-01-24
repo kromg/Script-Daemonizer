@@ -2,21 +2,20 @@
 
 use Test::More tests => 1;
 use Config;
-use Cwd;
+use File::Spec;
 
 my $thisperl = $Config{perlpath};
 if ($^O ne 'VMS') {
     $thisperl .= $Config{_exe} unless $thisperl =~ m/$Config{_exe}$/i;
 }
-my $testdir = getcwd;
+my $testdir = File::Spec->curdir();
 
 SKIP: {
     eval q{ use File::Temp qw/tempfile/; };
     skip q(File::Temp required), 1 
         if $@;
 
-    my ($tfh, $tfname) = tempfile( "testdaemon_XXXXXX", UNLINK => 1 );
-    unlink $tfname;
+    my ($tfh, $tfname) = tempfile( File::Spec->catfile( File::Spec->curdir, "testdaemon_XXXXXX" ), UNLINK => 0 );
 
     {
         my $prev = select $tfh;
@@ -41,9 +40,7 @@ SCRIPT1
     );
 };
 
-use Script::Daemonizer qw/ daemonize /;
-
-# $Script::Daemonizer::DEBUG = 'testdaemon_dbg_'.int(rand(1000));
+use Script::Daemonizer;
 
 delete @ENV{qw(PATH IFS CDPATH ENV BASH_ENV)};   # Make %ENV safer
 
@@ -56,10 +53,12 @@ chdir("$testdir")
 
 my \$pidfile = "$testdir/testdaemon.pid";
 
-daemonize (
+my \$daemon = new Script::Daemonizer (
     pidfile         => \$pidfile,
     working_dir     => "$testdir",
 );
+
+\$daemon->daemonize();
 
 print "Everything went good.\n";
 
@@ -71,14 +70,12 @@ print "Test daemon complete.\n";
 
 SCRIPT3
 
+
+
     delete @ENV{qw(PATH IFS CDPATH ENV BASH_ENV)};
 
-    my $fileno = fileno($tfh);
-    defined $fileno or fail("Unable to get fd of generated script");
-
-
     my @output;
-    my $cmd = "$thisperl -T /proc/$$/fd/$fileno";
+    my $cmd = "$thisperl -T $tfname";
     open(DAEMON, "$cmd 2>&1 |")
         or fail("launch daemon', reason: '$!");
     @output = <DAEMON>;
@@ -88,6 +85,8 @@ SCRIPT3
         or fail("launch second daemon', reason: '$!");
     @output = <NEWDAEMON>;
     close NEWDAEMON;
+
+    -f $tfname && unlink $tfname;
 
     PIDLOCK: {
         for (@output) {

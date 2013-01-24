@@ -15,3 +15,5 @@ t\/pod-coverage\.t
 t\/pod\.t
 t\/boilerplate\.t
 ignore\.txt
+mytest\.pl
+trylock\.pl
