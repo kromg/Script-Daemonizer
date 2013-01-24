@@ -8,7 +8,8 @@ Script::Daemonizer - Turns your script into a UNIX daemon process (the easy way)
 
 Version 0.93.00
 
-Interface changed from procedural to OO across 0.92-0.93 transition
+Interface changed from procedural to OO across 0.92-0.93 transition. 0.93.00 is
+quite B<experimental>.
 
 
 =head1 SYNOPSIS

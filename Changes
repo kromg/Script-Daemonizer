@@ -1,5 +1,10 @@
 Revision history for Script-Daemonizer
 
+0.93.00     Thu Jan 24 15:48:08 CET 2013
+            - Interface change to OO
+            - fork parameter introduced
+            - POSIX::close() and all related code/configurationd dropped
+
 0.92.00     Mon Jan 21 13:51:36 CET 2013
             - Second flock() after second fork(), to enforce pidfile locking
               even on platforms that do not propagate lock across fork(). 
