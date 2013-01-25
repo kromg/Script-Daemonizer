@@ -6,7 +6,7 @@ Script::Daemonizer - Turns your script into a UNIX daemon process (the easy way)
 
 =head1 VERSION
 
-Version 0.93.01
+Version 0.93.02
 
 Interface changed from procedural to OO across 0.92-0.93 transition. 0.93.x is
 quite B<experimental>.
@@ -257,6 +257,16 @@ If you use restart() with other signals, remember to unmask them:
 
 Advanced options are the following: 
 
+=head2 B<chdir>
+
+The only accepted value is I<SKIP>. If set, this causes the chdir() step to be
+skipped (and L<working_dir> will be ignored).
+
+    ...
+        chdir => 'SKIP'     # Skip chdir()
+    ...
+
+
 =head2 B<name>
 
 Sets the name of the daemon. This is used for logging. 
@@ -280,6 +290,7 @@ How many times do you want to fork?
 =back
 
 I<default>: fork() twice.
+
 
 =head2 B<output_file>
 
@@ -332,6 +343,12 @@ will end up killing the daemon (or provides an easy way to signal the daemon).
 
 =back
 
+
+=head2 B<setsid>
+
+The only accepted value is I<SKIP>. Set this to skip setsid().
+
+
 =head2 B<stdout_file>
 
 Redirect STDOUT on the file specified (appending by default). '/dev/null' will
@@ -346,13 +363,22 @@ used for STDERR.
 
 =head2 B<umask>
 
-Set the specified umask.
+Set the specified umask. Set this to I<SKIP> to skip this step:
+
+    ...
+        umask => 'SKIP',        # Skip setting umask
+    ...
 
 default: 0
 
 =head2 B<working_dir>
 
-Try to chdir() to the specified directory.
+Try to chdir() to the specified directory. Set L<chdir> to S<SKIP> to skip this
+step.
+
+    ...
+        working_dir => '/var/ftp',
+    ...
 
 default: root (/) dir.
 

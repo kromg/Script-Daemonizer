@@ -10,7 +10,7 @@ use FindBin ();
 use File::Spec;
 use File::Basename ();
 
-$Script::Daemonizer::VERSION = '0.93.01';
+$Script::Daemonizer::VERSION = '0.93.02';
 
 # ------------------------------------------------------------------------------
 # 'Private' vars
@@ -18,10 +18,12 @@ $Script::Daemonizer::VERSION = '0.93.01';
 my @argv_copy;
 my $devnull = File::Spec->devnull;
 my @daemon_options = ( qw{ 
+    chdir
     do_not_tie_stdhandles
     drop_privileges
     output_file
     pidfile
+    setsid
     stdout_file
     stderr_file
 
@@ -95,7 +97,8 @@ sub _set_umask {
 sub _fork {
     my $self = shift;
 
-    return unless $self->{fork};
+    return unless $self->{fork};    # Just in case, but already checked when 
+                                    # _fork() is called
 
     # See http://code.activestate.com/recipes/278731/ or the source of 
     # Proc::Daemon for a discussion on ignoring SIGHUP. 
@@ -103,8 +106,11 @@ sub _fork {
     # this to IGNORE anyway. 
     local $SIG{'HUP'} = 'IGNORE';
 
-    defined(my $pid = fork()) or croak "Cannot fork: $!";
+    defined(my $pid = fork()) 
+        or croak "Cannot fork: $!";
+
     exit 0 if $pid;     # parent exits here
+
     $self->{fork}--;
 
     $self->_debug("Forked, remaining forks: ", $self->{fork});
@@ -326,10 +332,18 @@ sub new {
 
     # Set useful defaults
     $self->{name}        = delete $params{name}        || (File::Spec->splitpath($0))[-1];
-    $self->{umask}       = delete $params{umask}       || 0;
     $self->{working_dir} = delete $params{working_dir} || File::Spec->rootdir();
-    $self->{fork}        = (exists $params{fork} && $params{fork} =~ /^[012]$/) ? 
-                             delete $params{fork}         : 2;
+    $self->{fork}        = (exists $params{fork} && $params{fork} =~ /^[012]$/)
+                            ?  delete $params{fork}
+                            : 2;
+
+    if (exists $params{umask}) {
+        croak "Invalid umask specified: ", $params{umask}
+            unless $params{umask} =~ /^([0-7]{1,3}|SKIP)$/;
+        $self->{umask} = delete $params{umask};
+    } else {
+        $self->{umask} = 0;
+    }
 
     # Get other options as they are:
     for (@daemon_options) {
@@ -359,16 +373,20 @@ sub daemonize {
         if $self->{pidfile};
 
     # Step 1.
-    $self->_set_umask;
+    $self->_set_umask
+        unless $self->{umask} eq 'SKIP';
 
     # Step 2.
-    $self->_fork();
+    $self->_fork()
+        if $self->{fork};
 
     # Step 3.
-    $self->_setsid();
+    $self->_setsid()
+        unless $self->{setsid} eq 'SKIP';
 
     # Step 4.
-    $self->_fork();
+    $self->_fork()
+        if $self->{fork};
     
     #
     # Step 4.5 - OPTIONAL: if pidfile is in use, now it's the moment to dump our
@@ -396,7 +414,8 @@ sub daemonize {
     }
 
     # Step 5.
-    $self->_chdir();
+    $self->_chdir()
+        unless $self->{chdir} eq 'SKIP';
 
 
     # Step 6.

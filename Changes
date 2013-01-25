@@ -1,5 +1,8 @@
 Revision history for Script-Daemonizer
 
+0.93.02     Fri Jan 25 16:51:35 CET 2013
+            - Added options to SKIP chdir(), setsid() and umask().
+
 0.93.01     Fri Jan 25 15:40:58 CET 2013
             - Code cleanup
             - Added redirect-output-to-file features
