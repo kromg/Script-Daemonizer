@@ -10,7 +10,7 @@ use FindBin ();
 use File::Spec;
 use File::Basename ();
 
-$Script::Daemonizer::VERSION = '0.93.00';
+$Script::Daemonizer::VERSION = '0.93.01';
 
 # ------------------------------------------------------------------------------
 # 'Private' vars
@@ -20,7 +20,10 @@ my $devnull = File::Spec->devnull;
 my @daemon_options = ( qw{ 
     do_not_tie_stdhandles
     drop_privileges
+    output_file
     pidfile
+    stdout_file
+    stderr_file
 
     _DEBUG
 } );
@@ -70,8 +73,19 @@ BEGIN {
 
 sub _debug {
     my $self = shift;
-    print @_, "\n" 
-        if $self->{'_DEBUG'};
+    print @_, "\n"
+        if $self->{_DEBUG};
+}
+
+
+##################
+# sub _set_umask #
+##################
+
+sub _set_umask {
+    my $self = shift;
+    defined(umask($self->{umask})) or 
+        croak qq(Cannot set umask to "), $self->{umask}, qq(": $!);
 }
 
 ###############
@@ -81,7 +95,7 @@ sub _debug {
 sub _fork {
     my $self = shift;
 
-    return unless $self->{'fork'};
+    return unless $self->{fork};
 
     # See http://code.activestate.com/recipes/278731/ or the source of 
     # Proc::Daemon for a discussion on ignoring SIGHUP. 
@@ -91,24 +105,20 @@ sub _fork {
 
     defined(my $pid = fork()) or croak "Cannot fork: $!";
     exit 0 if $pid;     # parent exits here
-    $self->{'fork'}--;
+    $self->{fork}--;
 
-    $self->_debug("Forked, remaining forks: ", $self->{'fork'});
+    $self->_debug("Forked, remaining forks: ", $self->{fork});
 
 }
 
-#   #########################
-#   # sub _max_open_files   #
-#   #########################
-#   # This comes from Prod::Daemon. κῦδος to Earl Hood and Detlef Pilzecker for
-#   # their work. 
-#   sub _max_open_files {
-#       my $openmax = POSIX::sysconf( &POSIX::_SC_OPEN_MAX );
-#   
-#       return ( $openmax && $openmax > 0 ) ? 
-#           $openmax : 
-#           64;
-#   }
+###############
+# sub _setsid #
+###############
+
+sub _setsid {
+    POSIX::setsid() or 
+        croak "Unable to set session id: $!";
+}
 
 #########################
 # sub _write_pidfile    #
@@ -119,7 +129,7 @@ sub _fork {
 # of an exec() and take that file descriptor as the (already opened) pidfile.
 sub _write_pidfile {
     my $self = shift;
-    my $pidfile = $self->{'pidfile'};
+    my $pidfile = $self->{pidfile};
     my $fh;
 
     # First we must see if there is a _pidfile_fileno variable in environment;
@@ -148,88 +158,20 @@ sub _write_pidfile {
     ++$|;
     select $prev;
 
-    return $self->{'pidfh'} = $fh;
+    return $self->{pidfh} = $fh;
 }
 
-#   ###################
-#   # sub _close_fh   #
-#   ###################
-#   # This closes all filehandles. See perldoc Script::Daemonizer for caveats.
-#   sub _close_fh {
-#       shift;  # discard 'keep' label
-#       my $keep = shift;
-#       my %keep;
-#   
-#       # Get the FD for each FH passed (if any).
-#       if ($keep) {
-#           # See if we have an array ref
-#           croak "You must pass an array reference to 'keep' option"
-#               unless ref($keep) eq 'ARRAY';
-#   
-#           # Get all file descriptors (assume numbers to be file descriptor)
-#           foreach (@$keep) {
-#               $keep{ $_ } = 1, next 
-#                   if /^\d+$/;
-#               no strict "refs";   # Have to lookup handles symblically
-#               # If filehandle name is unqualified I qualify it as *main::FH
-#               my $fd = fileno( 
-#                   ref($_) eq 'GLOB' ? $_ :
-#                                /::/ ? $_ : "main::$_" 
-#               );
-#               $keep{ $fd } = 1 if defined $fd;
-#           } 
-#       } 
-#   
-#       # First of all, try to close STDIN and reopen it from /dev/null
-#       unless ($keep{0}) {
-#           close(STDIN);
-#           open STDIN, '<', $devnull
-#               or croak "Cannot open $devnull for reading: $!";
-#       }
-#   
-#       # -------------------------------------------------------------------------
-#       # STDOUT and STDERR are managed separately, because we must see if user
-#       # requested to tie them to syslog. Also, closing STDOUT and STDERR as late
-#       # as possible, any error message or warning has still a chance to be spit
-#       # out somewhere.
-#       # See _manage_stdhandles()
-#       # -------------------------------------------------------------------------
-#   
-#       # Other code taken from - or inspired by - Proc::Daemon
-#       # Here is the original comment: 
-#           # Since <POSIX::close(FD)> is in some cases "secretly" closing
-#           # file descriptors without telling it to perl, we need to
-#           # re<open> and <CORE::close(FH)> as many files as we closed with
-#           # <POSIX::close(FD)>. Otherwise it can happen (especially with
-#           # FH opened by __DATA__ or __END__) that there will be two perl
-#           # handles associated with one file, what can cause some
-#           # confusion.   :-)
-#           # see: http://rt.perl.org/rt3/Ticket/Display.html?id=72526
-#       my $highest_fd = -1;
-#       for (3 .. _max_open_files) {
-#           next if $keep{ $_ };
-#           $highest_fd = $_ if POSIX::close($_);
-#       }
-#   
-#       # Now I reopen all filehandles for reading from /dev/null; again, from
-#       # Proc::Daemon: 
-#           # Perl will try to close all handles when @fh leaves scope
-#           # here, but the rude ones will sacrifice themselves to avoid
-#           # potential damage later
-#       { 
-#           my @fh;
-#           my $cur = -1;
-#           while ($cur < $highest_fd) {
-#               open my $fh, '<', $devnull
-#                   or croak "Cannot open $devnull for reading: $!";
-#               push @fh, $fh;
-#               $cur = fileno( $fh );
-#               print "Reopened $cur fd\n";
-#           }
-#       }
-#   
-#       return %keep;
-#   }
+
+##############
+# sub _chdir #
+##############
+
+sub _chdir {
+    my $self = shift;
+    chdir($self->{'working_dir'}) or 
+        croak "Cannot change directory to ", $self->{'working_dir'}, ": $!";
+}
+
 
 #################
 # sub _close    #
@@ -239,21 +181,28 @@ sub _close {
     my $self = shift;
     my $fh = shift;
     # Have to lookup handles by name
+    $self->_debug("Closing $fh");
     no strict "refs";
-    close *$fh 
-        or croak "Unable to close $fh: $!";
-    my $destination = $self->{'_DEBUG'} || $devnull;
-    open *$fh, '+>>', $destination
-        or croak "Unable to reopen $fh on $destination: $!";
-        # I'd really like to see whenever this "croak" will actually print 
-        # somewhere, anyway...
+    open *$fh, '>', $devnull
+        or croak "Unable to open $fh on $devnull: $!";
+    
+}
 
-    if ($self->{'_DEBUG'}) {
-        my $prev = select *$fh;
-        ++$|;
-        select $prev;
-    }
+#################
+# sub _redirect #
+#################
 
+sub _redirect {
+    my ( $self, $fh, $destination ) = @_;
+    
+    $destination = $devnull
+        if $destination eq '/dev/null';
+
+    $self->_debug("Redirecting $fh on: $destination ", $destination);
+    no strict "refs";
+    open *$fh, '>>', $destination
+        or croak "Unable to open $fh on $destination: $!";
+    
 }
 
 ##########################
@@ -265,60 +214,58 @@ sub _manage_stdhandles {
     open STDIN, '<', $devnull
         or croak "Cannot reopen STDIN on $devnull: $!";
 
-    # my $keep = $self->{'keep'};
-    # # I do not go through the same analysis done in _close_fh() because I can
-    # # name the filehandles I'm acting upon: they're called STDOUT (1) and
-    # # STDERR (2)
-    # my %keep = map { $_ => 1 } @$keep;
-
-    # # Return immediately if we have nothing to do:
-    # return 1 if ( 
-    #     ($keep{1} or $keep{'STDOUT'}) && ($keep{2} or $keep{'STDERR'}) 
-    # );
-
-    # If we were not requested to tie stdhandles, we may safely close them and
-    # return now. 
-    if ($self->{'do_not_tie_stdhandles'}) {
-        # _close 'STDOUT' unless ($keep{1} or $keep{'STDOUT'});
-        # _close 'STDERR' unless ($keep{2} or $keep{'STDERR'});
-        $self->_close( $_ ) for (qw{STDOUT STDERR});
+    # If we were requested to redirect output on a file, do it now and return
+    if ($self->{output_file}) {
+        $self->_debug("Using output file");
+        $self->_redirect( $_, $self->{output_file}) for (qw{STDOUT STDERR});
         return 1;
     }
 
-    eval {
-        require Tie::Syslog;
-    };
+    # Use Tie::Syslog unless both stdout/stderr redirected to file
+    unless ($self->{stdout_file} && $self->{stderr_file}) {
+        $self->_debug("Using Tie::Syslog");
+        eval {
+            require Tie::Syslog;
+        };
+    
+        if ($@) {
+            my $msg = sprintf ("Unable to load Tie::Syslog module.%s", 
+                $self->{_DEBUG}
+                    ? " Error is:\n----\n$@----\nI will continue without output" 
+                    : ""
+            );
+            carp $msg;
+            $self->_close( $_ ) for (qw{STDOUT STDERR});
+            return 0;
+        }
 
-    if ($@) {
-        carp "Unable to load Tie::Syslog module. Error is:\n----\n$@----\nI will continue without output";
-        # _close 'STDOUT' unless ($keep{1} or $keep{'STDOUT'});
-        # _close 'STDERR' unless ($keep{2} or $keep{'STDERR'});
-        $self->_close( $_ ) for (qw{STDOUT STDERR});
-        return 0;
+        $Tie::Syslog::ident  = $self->{name};
+        $Tie::Syslog::logopt = 'ndelay,pid';
     }
 
-    # DEFAULT: tie to syslog
-
-    $Tie::Syslog::ident  = $self->{'name'};
-    $Tie::Syslog::logopt = 'ndelay,pid';
-
-    #unless ($keep{1} or $keep{'STDOUT'}) {
-        close STDOUT
-            or croak "Unable to close STDOUT: $!";
+    # STDOUT
+    if ($self->{stdout_file}) {
+        $self->_redirect( 'STDOUT', $self->{stdout_file} );
+    } else {
+        $self->_close( 'STDOUT' );
+        $self->_debug("Tying STDOUT to Tie::Syslog");
         tie *STDOUT, 'Tie::Syslog', {
             facility => 'LOG_DAEMON',
             priority => 'LOG_INFO',
         };
-    #}
+    }
 
-    #unless ($keep{2} or $keep{'STDERR'}) {
-        close STDERR
-            or croak "Unable to close STDERR: $!";
+    # STDERR
+    if ($self->{stderr_file}) {
+        $self->_redirect( 'STDERR', $self->{stderr_file} );
+    } else {
+        $self->_close( 'STDERR' );
+        $self->_debug("Tying STDERR to Tie::Syslog");
         tie *STDERR, 'Tie::Syslog', {
             facility => 'LOG_DAEMON',
             priority => 'LOG_ERR',
         };
-    #}
+    }
     
 }
 
@@ -334,7 +281,7 @@ sub drop_privileges {
     croak "Odd number of arguments in drop_privileges() call!"
         if @_ % 2;
 
-    my %ids = @_ ? @_ : %{ $self->{'drop_privileges'} };
+    my %ids = @_ ? @_ : %{ $self->{drop_privileges} };
     my ($euid, $egid, $uid, $gid) = @ids{qw(euid egid uid gid)};
 
     # Drop GROUP ID
@@ -378,11 +325,11 @@ sub new {
     my %params = @_;
 
     # Set useful defaults
-    $self->{'name'}        = delete $params{'name'}        || (File::Spec->splitpath($0))[-1];
-    $self->{'umask'}       = delete $params{'umask'}       || 0;
-    $self->{'working_dir'} = delete $params{'working_dir'} || File::Spec->rootdir();
-    $self->{'fork'}        = (exists $params{'fork'} && $params{'fork'} =~ /^[012]$/) ? 
-                             delete $params{'fork'}         : 2;
+    $self->{name}        = delete $params{name}        || (File::Spec->splitpath($0))[-1];
+    $self->{umask}       = delete $params{umask}       || 0;
+    $self->{working_dir} = delete $params{working_dir} || File::Spec->rootdir();
+    $self->{fork}        = (exists $params{fork} && $params{fork} =~ /^[012]$/) ? 
+                             delete $params{fork}         : 2;
 
     # Get other options as they are:
     for (@daemon_options) {
@@ -405,24 +352,20 @@ sub daemonize {
 
     # Step 0.0 - OPTIONAL: drop privileges
     $self->drop_privileges
-        if $self->{'drop_privileges'};
+        if $self->{drop_privileges};
 
     # Step 0.1 - OPTIONAL: take a lock on pidfile
-    # push @{ $self->{'keep'} }, fileno($pidfh = _write_pidfile($self->{'pidfile'}))
-    #     if $self->{'pidfile'};
     $self->_write_pidfile()
-        if $self->{'pidfile'};
+        if $self->{pidfile};
 
     # Step 1.
-    defined(umask($self->{'umask'})) or 
-        croak qq(Cannot set umask to "), $self->{'umask'}, qq(": $!);
+    $self->_set_umask;
 
     # Step 2.
     $self->_fork();
 
     # Step 3.
-    POSIX::setsid() or 
-        croak "Unable to set session id: $!";
+    $self->_setsid();
 
     # Step 4.
     $self->_fork();
@@ -445,23 +388,22 @@ sub daemonize {
     # * Failing platforms (from CPANTesters): FreeBSD, Mac OS X, OpenBSD, Solaris;
     #   Linux and NetBSD seem to be unaffected.
     # 
-    if ($self->{'pidfh'}) {
-        my $pidfh = $self->{'pidfh'};
+    if ($self->{pidfh}) {
+        my $pidfh = $self->{pidfh};
         flock($pidfh, LOCK_EX|LOCK_NB)
-            or croak "can't lock ", $self->{'pidfile'}, ": $! - is another instance running?";
+            or croak "can't lock ", $self->{pidfile}, ": $! - is another instance running?";
         print $pidfh $$;
     }
 
     # Step 5.
-    chdir($self->{'working_dir'}) or 
-        croak "Cannot change directory to ", $self->{'working_dir'}, ": $!";
+    $self->_chdir();
 
-    # # Step 6.
-    # _close_fh(keep => $self->{'keep'}) 
-    #     unless $self->{'do_not_close_fh'};
+
+    # Step 6.
+    #   REMOVED! 
+
 
     # Step 7.
-    # _manage_stdhandles(%self->) unless $self->{'do_not_close_fh'};
     $self->_manage_stdhandles();
 
     return 1;
@@ -481,7 +423,7 @@ sub restart {
     my $SELF = File::Spec->catfile($FindBin::Bin, $script);
 
     # $pidf must be kept open across exec() if we don't want race conditions:
-    if (my $pidfh = $self->{'pidfh'}) {
+    if (my $pidfh = $self->{pidfh}) {
         $self->_debug("Keeping current pidfile open");
         # Clear close-on-exec bit for pidfile filehandle
         fcntl($pidfh, F_SETFD, 0)

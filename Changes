@@ -1,5 +1,11 @@
 Revision history for Script-Daemonizer
 
+0.93.01     Fri Jan 25 15:40:58 CET 2013
+            - Code cleanup
+            - Added redirect-output-to-file features
+            - Test suite performs test on single daemonizing steps one
+              by one.
+
 0.93.00     Thu Jan 24 15:48:08 CET 2013
             - Interface change to OO
             - fork parameter introduced

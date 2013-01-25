@@ -87,6 +87,7 @@ SCRIPT3
     close NEWDAEMON;
 
     -f $tfname && unlink $tfname;
+    -f "$testdir/testdaemon.pid" && unlink "$testdir/testdaemon.pid";
 
     PIDLOCK: {
         for (@output) {
