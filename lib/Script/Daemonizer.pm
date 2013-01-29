@@ -10,7 +10,7 @@ use FindBin ();
 use File::Spec;
 use File::Basename ();
 
-$Script::Daemonizer::VERSION = '0.93.02';
+$Script::Daemonizer::VERSION = '0.93.03';
 
 # ------------------------------------------------------------------------------
 # 'Private' vars
@@ -23,7 +23,9 @@ my @daemon_options = ( qw{
     drop_privileges
     output_file
     pidfile
+    restart_on
     setsid
+    sigunmask
     stdout_file
     stderr_file
 
@@ -275,6 +277,14 @@ sub _manage_stdhandles {
     
 }
 
+########################
+# sub _get_signal_list #
+########################
+sub _get_signal_list {
+    my $self = shift;
+
+}
+
 # ------------------------------------------------------------------------------
 # 'Public' functions
 # ------------------------------------------------------------------------------
@@ -334,7 +344,7 @@ sub new {
     $self->{name}        = delete $params{name}        || (File::Spec->splitpath($0))[-1];
     $self->{working_dir} = delete $params{working_dir} || File::Spec->rootdir();
     $self->{fork}        = (exists $params{fork} && $params{fork} =~ /^[012]$/)
-                            ?  delete $params{fork}
+                            ? delete $params{fork}
                             : 2;
 
     if (exists $params{umask}) {
@@ -357,7 +367,25 @@ sub new {
             if @extra_args;
     }
 
-    return bless $self, $pkg; 
+    bless $self, $pkg;
+
+    # Set up signal handlers
+    if ($self->{restart_on} && ref $self->{restart_on} eq 'ARRAY') {
+        my @sigs = @{ $self->{restart_on} };
+        for (@sigs) {
+            $SIG{ $_ } = sub {
+                $self->restart();
+            };
+        }
+        $self->sigunmask( @sigs );
+    }
+
+    # Unmask signals if requested
+    if ($self->{sigunmask} && ref $self->{sigunmask} eq 'ARRAY') {
+        $self->sigunmask(@{ $self->{sigunmask} });
+    }
+
+    return $self;
 
 }
 
@@ -470,7 +498,7 @@ sub sigunmask {
     # SIGQUIT
     # POSIX::QUIT
     # POSIX::SIGQUIT
-    my @sigs = map { 
+    my @sigs =  map { 
         ( my $signal = $_ ) =~ s/^POSIX:://;
         $signal =~ s/^SIG//;
         $signal = "POSIX::SIG".$signal;
