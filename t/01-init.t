@@ -1,7 +1,7 @@
 #!perl -T
 
 use Test::More tests => 2;
-use Script::Daemonizer;
+use Script::Daemonizer qw/:NOCHDIR :NOUMASK/;
 
 # new() croaks if odd number of elemets was passed
 eval q(
