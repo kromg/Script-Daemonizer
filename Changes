@@ -1,5 +1,11 @@
 Revision history for Script-Daemonizer
 
+0.93.04     Mon Feb 25 14:50:15 CET 2013
+            - Introduced import tags and $global_pidfh.
+              chdir() and umask() can be suppressed by import tags;
+              thanks to $global_pidfh pidfile is locked even in short-form
+              initialization
+
 0.93.02     Fri Jan 25 16:51:35 CET 2013
             - Added options to SKIP chdir(), setsid() and umask().
 

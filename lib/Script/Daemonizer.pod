@@ -6,7 +6,7 @@ Script::Daemonizer - Turns your script into a UNIX daemon process (the easy way)
 
 =head1 VERSION
 
-Version 0.93.02
+Version 0.93.04
 
 Interface changed from procedural to OO across 0.92-0.93 transition. 0.93.x is
 quite B<experimental>.
@@ -79,6 +79,7 @@ be configured, and some other are enabled only if configured.
 Advanced configuration syntax is the following: 
 
     use Script::Daemonizer;
+
     my $daemon = new Script::Daemonizer (
         name            => "My wonderful new daemon",  # tag for logging
         umask           => $my_umask,                  # set umask to $my_umask
@@ -118,6 +119,16 @@ Advanced configuration syntax is the following:
     }
     $daemon->sigunmask( qw/USR1/ );
 
+    ###########################################################################
+
+    # IMPORT TAGS
+
+    # Will skip chdir(), unless you pass 'working_dir' to new()
+    use Script::Daemonizer qw(:NOCHDIR);
+
+    # Will skip umask(), unless you pass 'umask' to new()
+    use Script::Daemonizer qw(:NOUMASK);
+
 
 =head2 OPTIONAL ACTIONS
 
@@ -145,6 +156,20 @@ L</restart()> for details.
 
 If you use signals other than SIGHUP for restarting, remember to sigunmask()
 them (see L</sigunmaks()> for details).
+
+=back
+
+
+=head2 IMPORT TAGS
+
+Starting from 0.93.4, you can suppress some default actions by importing
+Script::Daemonizer with the corresponding tag: 
+
+=over 4
+
+=item :NOCHDIR
+
+=item :NOUMASK
 
 =back
 

@@ -10,7 +10,7 @@ use FindBin ();
 use File::Spec;
 use File::Basename ();
 
-$Script::Daemonizer::VERSION = '0.93.03';
+$Script::Daemonizer::VERSION = '0.93.04';
 
 # ------------------------------------------------------------------------------
 # 'Private' vars
@@ -31,6 +31,11 @@ my @daemon_options = ( qw{
 
     _DEBUG
 } );
+my $global_pidfh;
+my %defaults = (
+    working_dir => File::Spec->rootdir(),
+    umask       => 0,
+);
 
 
 
@@ -64,6 +69,23 @@ BEGIN {
 }
 
 
+
+################################################################################
+# HANDLING IMPORT TAGS
+################################################################################
+
+sub import {
+    my $class = shift;
+    for my $opt (@_) {
+        if ($opt eq ':NOCHDIR') {
+            delete $defaults{working_dir};
+        } elsif ($opt eq ':NOUMASK') {
+            delete $defaults{umask};
+        } else {
+            croak "Unknown tag: $opt";
+        }
+    }
+}
     
 
 
@@ -166,7 +188,10 @@ sub _write_pidfile {
     ++$|;
     select $prev;
 
-    return $self->{pidfh} = $fh;
+    # Save it as a global so that in short init syntax
+    #   Script::Daemonizer->new( pidfile => $pfile )->daemonize;
+    # it stays in scope
+    return $global_pidfh = $self->{pidfh} = $fh;
 }
 
 
@@ -335,24 +360,25 @@ sub new {
     croak "Odd number of arguments in configuration!"
         if @_ %2;
 
-    my $self = {};
+    my $self = {
+        %defaults,
+    };
 
     # Get the configuration
     my %params = @_;
 
     # Set useful defaults
     $self->{name}        = delete $params{name}        || (File::Spec->splitpath($0))[-1];
-    $self->{working_dir} = delete $params{working_dir} || File::Spec->rootdir();
     $self->{fork}        = (exists $params{fork} && $params{fork} =~ /^[012]$/)
                             ? delete $params{fork}
                             : 2;
 
+    $self->{working_dir} = delete $params{working_dir} if $params{working_dir};
+
     if (exists $params{umask}) {
         croak "Invalid umask specified: ", $params{umask}
-            unless $params{umask} =~ /^([0-7]{1,3}|SKIP)$/;
+            unless $params{umask} =~ /^[0-7]{1,3}$/;
         $self->{umask} = delete $params{umask};
-    } else {
-        $self->{umask} = 0;
     }
 
     # Get other options as they are:
@@ -402,15 +428,14 @@ sub daemonize {
 
     # Step 1.
     $self->_set_umask
-        unless $self->{umask} eq 'SKIP';
+        if exists $self->{umask};
 
     # Step 2.
     $self->_fork()
         if $self->{fork};
 
     # Step 3.
-    $self->_setsid()
-        unless $self->{setsid} eq 'SKIP';
+    $self->_setsid();
 
     # Step 4.
     $self->_fork()
@@ -443,7 +468,7 @@ sub daemonize {
 
     # Step 5.
     $self->_chdir()
-        unless $self->{chdir} eq 'SKIP';
+        if $self->{working_dir};
 
 
     # Step 6.
