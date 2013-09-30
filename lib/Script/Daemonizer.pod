@@ -475,7 +475,7 @@ L<Config::General|Config::General>).
 
 =head1 AUTHOR
 
-Giacomo Montagner, C< <gmork at entirelyunlike.net> >, C< <gmork.gmork at
+Giacomo Montagner, C< <kromg at entirelyunlike.net> >, C< <kromg.kromg at
 gmail.com> >
 
 =head1 BUGS

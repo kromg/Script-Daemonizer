@@ -10,7 +10,7 @@ use FindBin ();
 use File::Spec;
 use File::Basename ();
 
-$Script::Daemonizer::VERSION = '0.93.04';
+$Script::Daemonizer::VERSION = '0.93.05';
 
 # ------------------------------------------------------------------------------
 # 'Private' vars
