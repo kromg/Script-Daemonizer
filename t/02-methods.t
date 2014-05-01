@@ -1,10 +1,13 @@
 #!perl -T
 
-use Test::More tests => 8;
+use Test::More tests => 9;
 use File::Spec;
 use Script::Daemonizer;
 
 my $gid = (split " ", $( )[0];
+my $user  = getpwuid($<);
+my $euser = getpwuid($>);
+my $group = getgrgid($gid);
 
 # ------------------------------------------------------------------------------
 # Call drop_privileges() with parameters passed to the function
@@ -41,6 +44,30 @@ eval qq(
 );
 
 ok (! $@, "call to drop_privileges() with implicit parameters failed: $@");
+
+# ------------------------------------------------------------------------------
+# Call drop_privileges() with names instead of numerical values
+# ------------------------------------------------------------------------------
+SKIP: {
+
+    skip("No login name, skipping drop_privileges() test with names", 1)
+        unless defined $user && defined $euser && defined $group;
+
+    eval qq(
+        my \$daemon = new Script::Daemonizer(
+            drop_privileges => {
+                euser  => '$user',
+                egroup => '$group',
+                user   => '$euser',
+                group  => '$group',
+            },
+        );
+
+        \$daemon->drop_privileges();
+    );
+
+    ok (! $@, "call to drop_privileges() with names failed: $@");
+}
 
 # ------------------------------------------------------------------------------
 # Call _write_pidfile()

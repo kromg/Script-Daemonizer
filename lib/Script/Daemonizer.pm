@@ -10,14 +10,14 @@ use FindBin ();
 use File::Spec;
 use File::Basename ();
 
-$Script::Daemonizer::VERSION = '0.93.05';
+$Script::Daemonizer::VERSION = '1.00.01';
 
 # ------------------------------------------------------------------------------
 # 'Private' vars
 # ------------------------------------------------------------------------------
 my @argv_copy;
 my $devnull = File::Spec->devnull;
-my @daemon_options = ( qw{ 
+my @daemon_options = ( qw{
     chdir
     do_not_tie_stdhandles
     drop_privileges
@@ -31,6 +31,12 @@ my @daemon_options = ( qw{
 
     _DEBUG
 } );
+my %id_map = (
+    user   => 'uid',
+    group  => 'gid',
+    euser  => 'euid',
+    egroup => 'egid',
+);
 my $global_pidfh;
 my %defaults = (
     working_dir => File::Spec->rootdir(),
@@ -43,13 +49,13 @@ my %defaults = (
 # SAVING @ARGV for restart()
 ################################################################################
 #
-# restart() needs the exact list of arguments in order to relaunch the script, 
+# restart() needs the exact list of arguments in order to relaunch the script,
 # if requested.
 # User is free to shift(@ARGV) and/or modify it in any way, we ensure we always
-# get the "real" args (unless someone takes some extra effort to modify them 
+# get the "real" args (unless someone takes some extra effort to modify them
 # before we get here).
 # restart() gets an array of args, thoug, so there is no need to tamper with
-# this: 
+# this:
 
 BEGIN {
     @argv_copy = @ARGV;
@@ -58,12 +64,12 @@ BEGIN {
 ################################################################################
 # HANDLING SIGHUP
 ################################################################################
-# 
-# When the script restarts itself upon receiving SIGHUP, that signal is masked. 
-# When starting, we unmask the signals so that they do not stop working for us. 
-# We do this regardless of how we were launched. 
 #
-{ 
+# When the script restarts itself upon receiving SIGHUP, that signal is masked.
+# When starting, we unmask the signals so that they do not stop working for us.
+# We do this regardless of how we were launched.
+#
+{
     my $sigset = POSIX::SigSet->new( SIGHUP );  # Just handle HUP
     sigprocmask(SIG_UNBLOCK, $sigset);
 }
@@ -86,7 +92,7 @@ sub import {
         }
     }
 }
-    
+
 
 
 # ------------------------------------------------------------------------------
@@ -110,27 +116,27 @@ sub _debug {
 
 sub _set_umask {
     my $self = shift;
-    defined(umask($self->{umask})) or 
+    defined(umask($self->{umask})) or
         croak qq(Cannot set umask to "), $self->{umask}, qq(": $!);
 }
 
 ###############
 # sub _fork   #
 ###############
-# fork() a child 
+# fork() a child
 sub _fork {
     my $self = shift;
 
-    return unless $self->{fork};    # Just in case, but already checked when 
+    return unless $self->{fork};    # Just in case, but already checked when
                                     # _fork() is called
 
-    # See http://code.activestate.com/recipes/278731/ or the source of 
-    # Proc::Daemon for a discussion on ignoring SIGHUP. 
+    # See http://code.activestate.com/recipes/278731/ or the source of
+    # Proc::Daemon for a discussion on ignoring SIGHUP.
     # Since ignoring it across the fork() should not be harmful, I prefer to set
-    # this to IGNORE anyway. 
+    # this to IGNORE anyway.
     local $SIG{'HUP'} = 'IGNORE';
 
-    defined(my $pid = fork()) 
+    defined(my $pid = fork())
         or croak "Cannot fork: $!";
 
     exit 0 if $pid;     # parent exits here
@@ -146,7 +152,7 @@ sub _fork {
 ###############
 
 sub _setsid {
-    POSIX::setsid() or 
+    POSIX::setsid() or
         croak "Unable to set session id: $!";
 }
 
@@ -154,7 +160,7 @@ sub _setsid {
 # sub _write_pidfile    #
 #########################
 # Open the pidfile (creating it if necessary), then lock it, then truncate it,
-# then write pid into it. Then retun filehandle. 
+# then write pid into it. Then retun filehandle.
 # If environment variable $_pidfile_fileno is set, then we assume we're product
 # of an exec() and take that file descriptor as the (already opened) pidfile.
 sub _write_pidfile {
@@ -163,12 +169,12 @@ sub _write_pidfile {
     my $fh;
 
     # First we must see if there is a _pidfile_fileno variable in environment;
-    # that means that we were started by an exec() and we must keep the same 
+    # that means that we were started by an exec() and we must keep the same
     # pidfile as before
     my $pidfd = delete $ENV{_pidfile_fileno};
     if (defined $pidfd && $pidfd =~ /^\d+$/) {
         $self->_debug("Reopening pidfile from file descriptor");
-        open($fh, ">&=$pidfd") 
+        open($fh, ">&=$pidfd")
             or croak "can't open fd $pidfd: $!";
         # Re-set close-on-exec bit for pidfile filehandle
         fcntl($fh, F_SETFD, 1)
@@ -201,7 +207,7 @@ sub _write_pidfile {
 
 sub _chdir {
     my $self = shift;
-    chdir($self->{'working_dir'}) or 
+    chdir($self->{'working_dir'}) or
         croak "Cannot change directory to ", $self->{'working_dir'}, ": $!";
 }
 
@@ -218,7 +224,7 @@ sub _close {
     no strict "refs";
     open *$fh, '>', $devnull
         or croak "Unable to open $fh on $devnull: $!";
-    
+
 }
 
 #################
@@ -227,7 +233,7 @@ sub _close {
 
 sub _redirect {
     my ( $self, $fh, $destination ) = @_;
-    
+
     $destination = $devnull
         if $destination eq '/dev/null';
 
@@ -235,7 +241,7 @@ sub _redirect {
     no strict "refs";
     open *$fh, '>>', $destination
         or croak "Unable to open $fh on $destination: $!";
-    
+
 }
 
 ##########################
@@ -260,11 +266,11 @@ sub _manage_stdhandles {
         eval {
             require Tie::Syslog;
         };
-    
+
         if ($@) {
-            my $msg = sprintf ("Unable to load Tie::Syslog module.%s", 
+            my $msg = sprintf ("Unable to load Tie::Syslog module.%s",
                 $self->{_DEBUG}
-                    ? " Error is:\n----\n$@----\nI will continue without output" 
+                    ? " Error is:\n----\n$@----\nI will continue without output"
                     : ""
             );
             carp $msg;
@@ -299,7 +305,7 @@ sub _manage_stdhandles {
             priority => 'LOG_ERR',
         };
     }
-    
+
 }
 
 ########################
@@ -322,7 +328,26 @@ sub drop_privileges {
     croak "Odd number of arguments in drop_privileges() call!"
         if @_ % 2;
 
+    # Get parameters
     my %ids = @_ ? @_ : %{ $self->{drop_privileges} };
+
+    # Resolve user name to user id if given
+    for (qw{ user euser }) {
+        defined( my $us = delete $ids{ $_ } )
+            or next;
+        defined ( $ids{ $id_map{ $_ } } = getpwnam( $us ) )
+            or croak "No such user: $us";
+    }
+
+    # Resolve group name to group id if given
+    for (qw{ group egroup }) {
+        defined( my $gr = delete $ids{ $_ } )
+            or next;
+        defined ( $ids{ $id_map{ $_ } } = getgrnam( $gr ) )
+            or croak "No such group: $gr";
+    }
+
+    # Get ids
     my ($euid, $egid, $uid, $gid) = @ids{qw(euid egid uid gid)};
 
     # Drop GROUP ID
@@ -331,11 +356,12 @@ sub drop_privileges {
             or croak "POSIX::setgid() failed: $!";
     } elsif (defined $egid) {
         # $egid might be a list
-        $) = $egid; 
+        $) = $egid;
         croak "Cannot drop effective group id to $egid: $!"
             if $!;
     }
 
+    # Drop USER ID
     if (defined $uid) {
         POSIX::setuid($uid)
             or croak "POSIX::setuid() failed: $!";
@@ -440,7 +466,7 @@ sub daemonize {
     # Step 4.
     $self->_fork()
         if $self->{fork};
-    
+
     #
     # Step 4.5 - OPTIONAL: if pidfile is in use, now it's the moment to dump our
     # pid into it.
@@ -458,7 +484,7 @@ sub daemonize {
     #
     # * Failing platforms (from CPANTesters): FreeBSD, Mac OS X, OpenBSD, Solaris;
     #   Linux and NetBSD seem to be unaffected.
-    # 
+    #
     if ($self->{pidfh}) {
         my $pidfh = $self->{pidfh};
         flock($pidfh, LOCK_EX|LOCK_NB)
@@ -472,14 +498,14 @@ sub daemonize {
 
 
     # Step 6.
-    #   REMOVED! 
+    #   REMOVED!
 
 
     # Step 7.
     $self->_manage_stdhandles();
 
     return 1;
-    
+
 }
 
 sub restart {
@@ -503,13 +529,13 @@ sub restart {
         # Now we must notify ourseves that pidfile is already open
         $ENV{_pidfile_fileno} = fileno( $pidfh );
     }
-    
+
     exec($SELF, @args)
         or croak "$0: couldn't restart: $!";
 
 }
 
-# Bye default, we unmask SIGHUP but, if other signals must be unmasked too, 
+# Bye default, we unmask SIGHUP but, if other signals must be unmasked too,
 # then use this and pass in a list of signals to be unmasked.
 sub sigunmask {
     my $self = shift;
@@ -518,16 +544,16 @@ sub sigunmask {
     no strict "refs";
     # Have to convert manually signal names into numbers. I remove the prefix
     # POSIX::[SIG] from signal name and add it back again, this allows user to
-    # refer to signals in any way, for example: 
+    # refer to signals in any way, for example:
     # QUIT
     # SIGQUIT
     # POSIX::QUIT
     # POSIX::SIGQUIT
-    my @sigs =  map { 
+    my @sigs =  map {
         ( my $signal = $_ ) =~ s/^POSIX:://;
         $signal =~ s/^SIG//;
         $signal = "POSIX::SIG".$signal;
-        &$signal 
+        &$signal
     } @_;
     my $sigset = POSIX::SigSet->new( @sigs );  # Handle all given signals
     sigprocmask(SIG_UNBLOCK, $sigset);
