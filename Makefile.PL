@@ -5,7 +5,7 @@ use ExtUtils::MakeMaker;
 
 WriteMakefile(
     NAME                => 'Script::Daemonizer',
-    AUTHOR              => q{Giacomo Montagner <gmork@entirelyunlike.net>},
+    AUTHOR              => q{Giacomo Montagner <kromg@entirelyunlike.net>},
     VERSION_FROM        => 'lib/Script/Daemonizer.pm',
     ABSTRACT_FROM       => 'lib/Script/Daemonizer.pod',
     ($ExtUtils::MakeMaker::VERSION >= 6.3002
