@@ -10,7 +10,7 @@ use FindBin ();
 use File::Spec;
 use File::Basename ();
 
-$Script::Daemonizer::VERSION = '1.00.01';
+$Script::Daemonizer::VERSION = '1.01.00';
 
 # ------------------------------------------------------------------------------
 # 'Private' vars
@@ -152,6 +152,9 @@ sub _fork {
 ###############
 
 sub _setsid {
+    my $self = shift;
+    return if
+        ( exists $self->{ setsid } && $self->{ setsid } eq 'SKIP' );
     POSIX::setsid() or
         croak "Unable to set session id: $!";
 }
@@ -190,9 +193,9 @@ sub _write_pidfile {
     truncate($fh, 0)
         or croak "can't truncate $pidfile: $!";
 
-    my $prev = select $fh;
-    ++$|;
-    select $prev;
+    select((select( $fh ), ++$|)[0]);
+
+    print $fh $$;
 
     # Save it as a global so that in short init syntax
     #   Script::Daemonizer->new( pidfile => $pfile )->daemonize;
@@ -268,12 +271,8 @@ sub _manage_stdhandles {
         };
 
         if ($@) {
-            my $msg = sprintf ("Unable to load Tie::Syslog module.%s",
-                $self->{_DEBUG}
-                    ? " Error is:\n----\n$@----\nI will continue without output"
-                    : ""
-            );
-            carp $msg;
+            carp "Unable to load Tie::Syslog module. Error is:\n----\n$@----\nI will continue without output"
+                if $self->{_DEBUG};
             $self->_close( $_ ) for (qw{STDOUT STDERR});
             return 0;
         }
@@ -409,7 +408,8 @@ sub new {
 
     # Get other options as they are:
     for (@daemon_options) {
-        $self->{ $_ } = delete $params{ $_ };
+        $self->{ $_ } = delete $params{ $_ }
+            if exists $params{ $_ };
     }
 
     my @extra_args = keys %params;
@@ -448,10 +448,6 @@ sub daemonize {
     $self->drop_privileges
         if $self->{drop_privileges};
 
-    # Step 0.1 - OPTIONAL: take a lock on pidfile
-    $self->_write_pidfile()
-        if $self->{pidfile};
-
     # Step 1.
     $self->_set_umask
         if exists $self->{umask};
@@ -467,30 +463,10 @@ sub daemonize {
     $self->_fork()
         if $self->{fork};
 
-    #
-    # Step 4.5 - OPTIONAL: if pidfile is in use, now it's the moment to dump our
-    # pid into it.
-    #
-    ### NEW from 0.92.00 - try to lock pidfile again: on some platforms* the
-    # lock is not preserved across fork(), so we must ensure again that no one
-    # is holding the lock. This allows a tiny race condition between the first
-    # and the second lock attempt, however nothing harmful is done between these
-    # two operations - steps 1 to 4 can be done safely even if another instance
-    # is running. The only reason I didn't remove the first flock() attempt is
-    # that if we need to fail and we have the chance to do it sooner, then it's
-    # preferable, since at step 0.1 we're still attached to our controlling
-    # process (and to the terminal, if launched by user) and the failure is more
-    # noticeable (maybe).
-    #
-    # * Failing platforms (from CPANTesters): FreeBSD, Mac OS X, OpenBSD, Solaris;
-    #   Linux and NetBSD seem to be unaffected.
-    #
-    if ($self->{pidfh}) {
-        my $pidfh = $self->{pidfh};
-        flock($pidfh, LOCK_EX|LOCK_NB)
-            or croak "can't lock ", $self->{pidfile}, ": $! - is another instance running?";
-        print $pidfh $$;
-    }
+    # Step 4.5 - OPTIONAL: take a lock on pidfile
+    # (and write pid into it)
+    $self->_write_pidfile()
+        if $self->{pidfile};
 
     # Step 5.
     $self->_chdir()

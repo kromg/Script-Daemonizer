@@ -17,3 +17,4 @@ t\/boilerplate\.t
 ignore\.txt
 mytest\.pl
 trylock\.pl
+Script-Daemonizer-.*\.tar\.gz

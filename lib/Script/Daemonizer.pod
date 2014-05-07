@@ -6,7 +6,7 @@ Script::Daemonizer - Daemonize; handle signals, logs, pidfile and locks.
 
 =head1 VERSION
 
-Version 1.00.01
+Version 1.01.00
 
 Interface changed from procedural to OO across 0.92-0.93 transition.
 
@@ -30,6 +30,9 @@ This module also provides some facilities to manage logging, restarting (on
 SIGHUP by default) and preventing multiple instances to run at once (by locking
 a pidfile).
 
+Default and optional steps can be customized by passing arguments to new() (see
+L</ADVANCED USAGE> for details).
+
 
 daemonize() is the main routine of this module. What it does, out-of-the-box,
 is:
@@ -42,7 +45,7 @@ or specify I<umask> option (see L</ADVANCED USAGE> for details).
 
 =item 2.* it calls fork(), then the parent exits;
 
-=item 3.  it calls POSIX::setsid() (see L<POSIX::setsid()>), so the process becomes session leader;
+=item 3.* it calls POSIX::setsid() (see L<POSIX::setsid()>), so the process becomes session leader;
 
 =item 4.* it calls fork() again, then the parent exits;
 
@@ -59,6 +62,13 @@ logged to syslog (see L<Tie::Syslog>); open STDIN on /dev/null.
 
 Steps marked by * are configurable; some additional steps are also available if
 explicitly requested; see L</ADVANCED USAGE> for details.
+
+
+
+=head1 SUPPORTED PLATFORMS
+
+All UNIX and UNIX-like operating systems (or so should be). Please open a BUG
+if you find it's not so.
 
 
 
@@ -83,9 +93,11 @@ Advanced configuration syntax is the following:
             gid  => $to_gid,
             # and others, see drop_privileges() method description
         },
+        setsid          => 'SKIP',                     # skip POSIX::setsid() call
         fork            => 2,                          # for # number of times (0, 1 or 2)
         pidfile         => '/var/run/mydaemon.pid',    # write and lock this pidfile
         output_file     => '/var/log/mydaemon.log',    # redirect stdout/stderr here
+        restart_on      => [ 'HUP', 'QUIT' ],          # restart on these signals
     );
 
     # To make stdout/stderr go to different places, use these:
@@ -96,23 +108,12 @@ Advanced configuration syntax is the following:
     );
 
 
-    # setup SIGHUP as a restart:
-    $SIG{HUP} = sub {
-        $daemon->restart();
-    };
-
     # if you did not specify drop_privileges in configuration, you can still
     # do it afterwards:
     $daemon->drop_privileges(
         uid  => $to_uid,
         gid  => $to_gid,
     );
-
-    # If you used a different signal to restart, remembre to unmask it:
-    $SIG{USR1} = sub {
-        $daemon->restart();
-    }
-    $daemon->sigunmask( qw/USR1/ );
 
     ###########################################################################
 
@@ -136,21 +137,14 @@ configured. These are:
 
 It happens before anything else. This simply calls drop_privileges() internally.
 
-=item * Step 0.1 - pidfile creation (and locking)
+=item * Step 4.5 - pidfile creation (and locking)
 
 This implicitly provides a method to ensure that only one copy of your daemon
-is running at once, because pidfile is locked. PID is written into pidfile only
-after the last fork() has been completed.
+is running at once, because pidfile is locked.
 
-=item * Handling of SIGHUP as a restart()
+=item * Handling of SIGHUP (and maybe other signals) as a restart() trigger
 
-You must set up restart() as the handler of SIGHUP yourself. See
-L</restart()> for details.
-
-=item * Unmaksing signals
-
-If you use signals other than SIGHUP for restarting, remember to sigunmask()
-them (see L</sigunmaks()> for details).
+See B<< restart_on >> parameter.
 
 =back
 
@@ -162,9 +156,9 @@ Script::Daemonizer with the corresponding tag:
 
 =over 4
 
-=item :NOCHDIR
+=item :NOCHDIR - will skip the chdir to '/'
 
-=item :NOUMASK
+=item :NOUMASK - will skip setting umask to 0
 
 =back
 
@@ -214,7 +208,8 @@ See L<perldoc perlvar> for details on IDs.
 daemonize() will automatically call drop_privileges() if configured to do so
 (guess what? See L</ADVANCED USAGE> for details) but this will happen
 B<before> anything else (think of this as step 0). If you need to drop
-privileges at a later moment, use drop_privileges(), otherwise it's probably
+privileges at a later moment, do not pass the C<< drop_privileges >> parameter
+to new() and use the drop_privileges() method, otherwise it's probably
 safer to do so while daemonize()-ing.
 
 =head2 restart()
@@ -228,6 +223,9 @@ for details).
     $SIG{HUP} = sub {
         $daemon->restart;
     };
+
+Please B<< NOTE >> that with the B<< restart_on >> parameter this setup is done
+automatically.
 
 B<pidfile> (see L</ADVANCED USAGE> for details) is kept open
 upon restart (if configured), but on some platforms (see L</Concerning locks>
@@ -274,21 +272,14 @@ If you use restart() with other signals, remember to unmask them:
 
     $daemon->sigunmask(qw{QUIT USR1});
 
+B<< or use C<< restart_on >> to handle this automatically>>.
+
 
 
 =head1 ADVANCED OPTIONS
 
 These are all parameter you can pass to new(). Advanced options are the
 following:
-
-=head2 B<chdir>
-
-The only accepted value is I<SKIP>. If set, this causes the chdir() step to be
-skipped (and L<working_dir> will be ignored).
-
-    ...
-        chdir => 'SKIP'     # Skip chdir()
-    ...
 
 
 =head2 B<name>
@@ -320,11 +311,9 @@ I<default>: fork() twice.
 
 Redirect both STDOUT and STDERR on the file specified (appending by default).
 '/dev/null' will be converted to File::Spec->devnull (see L<File::Spec>);
-Tie::Syslog will be skipped completely.
+Tie::Syslog will be skipped completely. E.g.:
 
     output_file => '/dev/null',
-
-will result in complete discard of output.
 
 
 =head2 B<pidfile>
@@ -367,6 +356,14 @@ will end up killing the daemon (or provides an easy way to signal the daemon).
 
 =back
 
+=head2 B<restart_on>
+
+This is a ArrayRef of signal names (without the SIG- prefix) that will
+trigger the restart() method automatically. Signal masking is handled, too, so
+you'll want to use this to handle restarts. E.g.:
+
+    restart_on => [ 'HUP', 'QUIT' ],    # trigger restart() on SIGHUP and SIGQUIT
+
 
 =head2 B<setsid>
 
@@ -387,24 +384,17 @@ used for STDERR.
 
 =head2 B<umask>
 
-Set the specified umask. Set this to I<SKIP> to skip this step:
-
-    ...
-        umask => 'SKIP',        # Skip setting umask
-    ...
+Set the specified umask.
 
 default: 0
+Setting umask can be suppressed using the C<< :NOUMASK >> import tag.
 
 =head2 B<working_dir>
 
-Try to chdir() to the specified directory. Set L<chdir> to S<SKIP> to skip this
-step.
-
-    ...
-        working_dir => '/var/ftp',
-    ...
+Try to chdir() to the specified directory.
 
 default: root (/) dir.
+chdir() can be suppressed using the C<< :NOCHDIR >> import tag.
 
 =head1 LOCKING
 
@@ -423,16 +413,10 @@ skip filehandle-closing step completely.
 =head2 Concerning locks
 
 On some platforms (by now only Solaris is proven to be affected, but other
-platforms may be) the lock on the pidfile
-is not preserved across fork(), so from 0.91 to 0.92 I added a second flock()
-after the last fork(). This allows a race condition between the first and the
-second flock(), but it should not be a problem, since the lock could be as well
-tried just after the last fork(). The reason I left the first attempt in place
-is that if we have to fail anyway, it's better to do it as early as possible.
-B<The real race condition> may happen, instead, when the process is restarted
-using restart() (or by any other mean), because if lock on pidfile is not
-preserved, someone could take the lock on it before we're able to complete
-restart, thus causing the process to exit.
+platforms may be) the lock on the pidfile is not preserved across fork().
+
+Starting with v1.01.00 the pidfile is created and locked after the last fork(),
+this should solve the various issues with different platforms.
 
 
 
