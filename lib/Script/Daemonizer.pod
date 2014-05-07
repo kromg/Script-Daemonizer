@@ -6,7 +6,7 @@ Script::Daemonizer - Daemonize; handle signals, logs, pidfile and locks.
 
 =head1 VERSION
 
-Version 1.01.00
+Version 1.01.01
 
 Interface changed from procedural to OO across 0.92-0.93 transition.
 

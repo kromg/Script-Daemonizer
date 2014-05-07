@@ -1,5 +1,11 @@
 Revision history for Script-Daemonizer
 
+1.01.01     Wed May  7 12:13:31 CEST 2014
+            - updated this file
+
+1.01.00     Wed May  7 12:13:31 CEST 2014
+            - fixed flock() problems on Solaris 11
+
 1.00.01     Thu May  1 22:58:14 CEST 2014
             - drop_privileges() now works with user/group names
 
